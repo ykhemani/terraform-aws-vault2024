@@ -94,21 +94,21 @@ variable "iam_instance_profile" {
 }
 
 variable "userdata_templatefile" {
-  type = string
+  type        = string
   description = "Name of userdata template file."
-  default = "userdata.sh.tpl"
+  default     = "userdata.sh.tpl"
 }
 
 variable "gitrepo" {
-  type = string
+  type        = string
   description = "Public git repo from which to clone (use https rather than ssh)."
-  default = "https://github.com/ykhemani/terraform-aws-vault2024.git"
+  default     = "https://github.com/ykhemani/terraform-aws-vault2024.git"
 }
 
 variable "repodir" {
-  type = string
+  type        = string
   description = "Name of directory into which to clone the gitrepo (under the /data directory.)"
-  default = "vault-demo-rig"
+  default     = "vault-demo-rig"
 }
 
 #-------------------------------------------------------------------------

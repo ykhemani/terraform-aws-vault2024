@@ -254,8 +254,8 @@ resource "aws_instance" "instance" {
     wildcard_private_key  = tls_private_key.wildcard_private_key.private_key_pem,
     wildcard_cert         = tls_locally_signed_cert.wildcard_cert.cert_pem,
     ssh_import_id         = var.ssh_import_id,
-gitrepo = var.gitrepo,
-repodir = var.repodir,
+    gitrepo               = var.gitrepo,
+    repodir               = var.repodir,
   }))
 
   tags = merge(
