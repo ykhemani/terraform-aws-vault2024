@@ -949,9 +949,6 @@ cat <<EOF > $VAULT_CERT_DIR/fullchain.tpl
 {{ end }}
 EOF
 
-cd /data && \
-  git clone https://github.com/ykhemani/vault-web-app.git web
-
 mkdir -p /data/web && \
   cd /data/$REPODIR/web-app && \
   cp -r * /data/web && \
