@@ -1,0 +1,18 @@
+owner_cidr_blocks = [
+  "1.2.3.4/32"
+]
+ssh_import_id                = "gh:ykhemani"
+prefix                       = "vault-demo-rig"
+install_packages             = false
+hcp_packer_image_bucket_name = "ubuntu-focal-golden-image"
+hcp_packer_image_channel     = "latest"
+vault_license                = "<vault license>"
+global_tags = {
+  owner            = "yash"
+  creator          = "yash@example.com"
+  terraform        = "true"
+  lifecycle-action = "stop"
+  config-as-code   = "terraform"
+  ttl              = "24"
+  purpose          = "Vault Demo"
+}
