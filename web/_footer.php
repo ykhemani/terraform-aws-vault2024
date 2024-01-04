@@ -4,7 +4,7 @@
 
 <footer class="footer mt-auto py-3 bg-body-tertiary">
   <div class="container">
-  <span class="text-body-secondary">&copy; 2023 <?php echo BRAND; ?>. All rights reserved.</span>
+  <span class="text-body-secondary">&copy; <?php echo date('Y'); ?> <?php echo BRAND; ?>. All rights reserved.</span>
   </div>
 </footer>
 
