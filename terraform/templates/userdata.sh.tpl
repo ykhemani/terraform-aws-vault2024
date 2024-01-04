@@ -950,7 +950,7 @@ cat <<EOF > $VAULT_CERT_DIR/fullchain.tpl
 EOF
 
 mkdir -p /data/web && \
-  cd /data/$REPODIR/web-app && \
+  cd /data/$REPODIR/web && \
   cp -r * /data/web && \
   cd /data
 
