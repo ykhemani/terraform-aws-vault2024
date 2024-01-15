@@ -114,17 +114,6 @@ variable "repodir" {
 #-------------------------------------------------------------------------
 # Vault
 #-------------------------------------------------------------------------
-variable "packer_image" {
-  type        = bool
-  description = "Are we using a Packer image with tools pre-installed?"
-  default     = true
-}
-
-variable "install_packages" {
-  type        = bool
-  description = "Install required packages?"
-  default     = true
-}
 
 variable "ssh_import_id" {
   type        = string

@@ -42,7 +42,7 @@ resource "tls_self_signed_cert" "ca-cert" {
   is_ca_certificate     = true
 
   subject {
-    common_name         = "${var.domain} Certificate Authority"
+    common_name         = "${var.domain} Demo Root Certificate Authority"
     country             = var.ca_country
     province            = var.ca_state
     locality            = var.ca_locale
@@ -95,7 +95,7 @@ resource "tls_cert_request" "wildcard_csr" {
     "*.${var.domain}",
   ]
 
-  ip_addresses = ["127.0.0.1"]
+  ip_addresses = ["127.0.0.1",aws_eip.eip.public_ip]
 }
 
 # wildcard cert
@@ -104,6 +104,8 @@ resource "tls_locally_signed_cert" "wildcard_cert" {
   ca_private_key_pem = tls_private_key.ca-private-key.private_key_pem
   ca_cert_pem        = tls_self_signed_cert.ca-cert.cert_pem
 
+  is_ca_certificate = true
+
   validity_period_hours = var.cert_validity
 
   allowed_uses = [
@@ -111,6 +113,10 @@ resource "tls_locally_signed_cert" "wildcard_cert" {
     "key_encipherment",
     "server_auth",
     "client_auth",
+
+    "cert_signing",
+    "crl_signing",
+    "ocsp_signing"
 
   ]
 }
@@ -197,24 +203,6 @@ resource "aws_eip" "eip" {
   network_interface = aws_network_interface.nic.id
 }
 
-# # Canonical Ubuntu Image
-# data "aws_ami" "ami" {
-#   most_recent = true
-
-#   filter {
-#     name   = "name"
-#     values = [var.ami_filter]
-#   }
-
-#   filter {
-#     name   = "virtualization-type"
-#     values = ["hvm"]
-#   }
-
-#   # Canonical
-#   owners = [var.ami_owner]
-# }
-
 resource "aws_instance" "instance" {
   #subnet_id = element(module.vpc.public_subnets, 1)
   # associate_public_ip_address = true
@@ -242,9 +230,6 @@ resource "aws_instance" "instance" {
   }
 
   user_data_base64 = base64gzip(templatefile("${path.module}/templates/${var.userdata_templatefile}", {
-    cloud                 = "aws",
-    using_packer_image    = var.packer_image == null ? false : true,
-    install_packages      = var.install_packages,
     domain                = var.domain,
     vault_license         = var.vault_license,
     ldap_users            = var.ldap_users,
