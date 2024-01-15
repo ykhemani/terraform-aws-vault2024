@@ -15,76 +15,6 @@ then
   ssh-import-id $SSH_IMPORT_ID
 fi
 
-REQUIRED_PACKAGES="git wget jq htop vault-enterprise boundary-enterprise consul-enterprise nomad-enterprise terraform packer consul-template envconsul mysql-client ldap-utils"
-DOCKER_PACKAGES="docker-ce docker-ce-cli containerd.io docker-buildx-plugin"
-
-# have_program is a helper function to determine if a package is installed
-function have_program {
-  [ -x "$(which $1)" ]
-}
-
-# install_tools installs any necessary tools used in this script
-function install_packages {
-  echo "[INFO] Installing necessary tools..."
-  
-  # Determine package manager to use
-  if have_program apt-get; then
-    package_manager="apt-get"
-
-    curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo apt-key add -
-    sudo add-apt-repository "deb [arch=amd64] \
-      https://apt.releases.hashicorp.com $(lsb_release -cs) main"
-
-    sudo $package_manager update -y
-
-    for pkg in docker.io docker-doc podman-docker containerd runc; do sudo apt-get remove $pkg; done
-    sudo apt-get update
-    sudo apt-get install -y ca-certificates curl gnupg
-    sudo install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-    sudo chmod a+r /etc/apt/keyrings/docker.gpg
-    echo \
-      "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-      "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
-      sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-    sudo apt-get update
-
-  elif have_program yum; then
-    package_manager="yum"
-
-    sudo yum install -y yum-utils
-    sudo yum-config-manager \
-      --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
-
-    sudo yum remove \
-      docker \
-      docker-client \
-      docker-client-latest \
-      docker-common \
-      docker-latest \
-      docker-latest-logrotate \
-      docker-logrotate \
-      docker-engine \
-      podman \
-      runc
-
-    sudo yum-config-manager \
-      --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
-  fi
-  
-  # Install required packages
-  sudo $package_manager install -y $REQUIRED_PACKAGES $DOCKER_PACKAGES
-
-  sudo curl -sL "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-  sudo chmod +x /usr/local/bin/docker-compose
-  ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose
-  echo "[INFO] Done installing packages."
-}
-
-%{ if install_packages == true ~}
-install_packages
-%{ endif ~}
-
 # add user ubuntu to docker group
 usermod -aG docker ubuntu
 
@@ -160,6 +90,11 @@ cp $CERT_DIR/wildcard/ca.pem /usr/local/share/ca-certificates/demo-ca.pem
 cat $CERT_DIR/wildcard/cert.pem > $CERT_DIR/wildcard/fullchain.pem
 cat $CERT_DIR/wildcard/ca.pem >> $CERT_DIR/wildcard/fullchain.pem
 
+# Wildcard Bundle, for building Vault CA
+cat $CERT_DIR/wildcard/privkey.pem > $CERT_DIR/wildcard/bundle.pem
+cat $CERT_DIR/wildcard/cert.pem >> $CERT_DIR/wildcard/bundle.pem
+cat $CERT_DIR/wildcard/ca.pem >> $CERT_DIR/wildcard/bundle.pem
+
 sudo update-ca-certificates
 
 # install vault license
@@ -183,6 +118,9 @@ export CERT_DIR=$CERT_DIR
 
 # ldap auth
 export LDAP_AUTH_PATH=ldap
+export LDAP_USER_VAULT_ADMIN=$LDAP_USER_VAULT_ADMIN
+# userpass auth
+export USERPASS_AUTH_PATH=userpass
 
 # approle auth for web app
 export APPROLE_PATH=approle
@@ -194,6 +132,7 @@ export ROOT_CA_NAME=vault-ca-root
 export INTERMEDIATE_CA_NAME=vault-ca-intermediate
 export VAULT_CERT_DOMAIN=demo.$DOMAIN
 export VAULT_CERT_DIR="$CERT_DIR/demo.$DOMAIN"
+export IMPORTED_CA_NAME=vault-ca-imported
 
 # mysql
 export MYSQL_HOST=mysql.$DOMAIN
@@ -492,6 +431,21 @@ vault write $INTERMEDIATE_CA_NAME/roles/$VAULT_CERT_DOMAIN \
   max_ttl="24h" \
   generate_lease=true
 
+# pki secret engine for imported ca
+vault secrets enable -path=$IMPORTED_CA_NAME pki
+vault secrets tune -max-lease-ttl=87600h $IMPORTED_CA_NAME
+vault write $IMPORTED_CA_NAME/config/urls \
+  issuing_certificates="$VAULT_ADDR/v1/$IMPORTED_CA_NAME/ca" \
+  crl_distribution_points="$VAULT_ADDR/v1/$IMPORTED_CA_NAME/crl"
+vault write -format=json $IMPORTED_CA_NAME/config/ca pem_bundle=@$CERT_DIR/wildcard/bundle.pem
+# create role for issuing certs
+vault write $IMPORTED_CA_NAME/roles/$VAULT_CERT_DOMAIN \
+  allowed_domains="$VAULT_CERT_DOMAIN" \
+  allow_subdomains="true" \
+  ttl="1h" \
+  max_ttl="24h" \
+  generate_lease=true
+
 ##########
 # transit secrets engine
 
@@ -664,7 +618,7 @@ EOF
 
 # web policy
 vault policy write $WEB_POLICY -<<EOF
-# pki cert consumer
+# pki cert consumer - intermediate CA
 path "$INTERMEDIATE_CA_NAME/*" {
   capabilities = ["list"]
 }
@@ -678,6 +632,23 @@ path "$INTERMEDIATE_CA_NAME/config/crl*" {
   capabilities = ["read","list","create","update"]
 }
 path "$INTERMEDIATE_CA_NAME/config/urls*" {
+  capabilities = ["read","list","create","update"]
+}
+
+# pki cert consumer - imported CA
+path "$IMPORTED_CA_NAME/*" {
+  capabilities = ["list"]
+}
+path "$IMPORTED_CA_NAME/issue*" {
+  capabilities = ["create","update"]
+}
+path "$IMPORTED_CA_NAME/config*" {
+  capabilities = ["list","create","update"]
+}
+path "$IMPORTED_CA_NAME/config/crl*" {
+  capabilities = ["read","list","create","update"]
+}
+path "$IMPORTED_CA_NAME/config/urls*" {
   capabilities = ["read","list","create","update"]
 }
 
@@ -751,6 +722,9 @@ EOF
 vault secrets enable -path $KV_PATH kv-v2
 vault kv put $KV_PATH/engineering/app1 user=$(uuidgen) pass=$(uuidgen)
 
+# userpass auth
+vault auth enable -path=$USERPASS_AUTH_PATH userpass
+
 # ldap auth
 vault auth disable $LDAP_AUTH_PATH
 vault auth enable -path=$LDAP_AUTH_PATH ldap
@@ -771,16 +745,24 @@ vault write auth/$LDAP_AUTH_PATH/groups/engineers policies=engineers
 
 # generate vault clients
 
+export USERPASS_MOUNT_ACCESSOR=$(vault auth list -detailed | grep $USERPASS_AUTH_PATH | awk '{print $3}')
+
 export LDAP_MOUNT_ACCESSOR=$(vault auth list -detailed  | grep $LDAP_AUTH_PATH | awk '{print $3}')
 for i in $${LDAP_USERS//,/ }
 do
 
   VAULT_ENTITY_ID=$(vault write -format=json identity/entity name="$i" policies="$i" | jq -r ".data.id")
 
+  vault write auth/$USERPASS_AUTH_PATH/users/$i password=$i policies=$i
+
   vault write identity/entity-alias name="$i" \
      canonical_id=$VAULT_ENTITY_ID \
      mount_accessor=$LDAP_MOUNT_ACCESSOR \
 
+  vault write identity/entity-alias name="$i" \
+    canonical_id=$VAULT_ENTITY_ID \
+    mount_accessor=$USERPASS_MOUNT_ACCESSOR
+  
   vault kv put $KV_PATH/$i/test x=$(uuidgen) y=$(uuidgen)
   vault policy write $i - <<EOF
 # grant permissions to user kv secrets
@@ -794,13 +776,19 @@ path "$KV_PATH/data/$i/*" {
 EOF
   #vault write auth/$LDAP_AUTH_PATH/users/$i policies=$i
 
-  echo "::::: Logging into Vault as $i"
+  echo "::::: Logging into Vault via LDAP auth as $i"
   VAULT_TOKEN=$(vault login -format=json -method=ldap username=$i password=$i | jq -r .auth.client_token) vault kv list -format=json kv/$i > /dev/null
+  VAULT_TOKEN=$(vault login -format=json -method=userpass username=$i password=$i | jq -r .auth.client_token) vault kv list -format=json kv/$i > /dev/null
 done
 
 rm -f ~/.vault-token
 
-vault write auth/$LDAP_AUTH_PATH/users/$LDAP_USER_VAULT_ADMIN policies=$LDAP_USER_VAULT_ADMIN,admin
+vault write auth/$LDAP_AUTH_PATH/users/$LDAP_USER_VAULT_ADMIN \
+  policies=$LDAP_USER_VAULT_ADMIN,admin
+
+vault write auth/$USERPASS_AUTH_PATH/users/$LDAP_USER_VAULT_ADMIN \
+  password=$LDAP_USER_VAULT_ADMIN \
+  policies=$LDAP_USER_VAULT_ADMIN,admin
 
 ##########
 # configure vault-agent
@@ -937,13 +925,13 @@ EOF
 chmod 0755 $VAULT_AGENT_PATH/restart-web.sh
 
 cat <<EOF > $VAULT_CERT_DIR/privkey.tpl
-{{ with secret "$INTERMEDIATE_CA_NAME/issue/$VAULT_CERT_DOMAIN" "common_name=web.$VAULT_CERT_DOMAIN" }}
+{{ with secret "$IMPORTED_CA_NAME/issue/$VAULT_CERT_DOMAIN" "common_name=web.$VAULT_CERT_DOMAIN" }}
 {{ .Data.private_key }}
 {{ end }}
 EOF
 
 cat <<EOF > $VAULT_CERT_DIR/fullchain.tpl
-{{ with secret "$INTERMEDIATE_CA_NAME/issue/$VAULT_CERT_DOMAIN" "common_name=web.$VAULT_CERT_DOMAIN" }}
+{{ with secret "$IMPORTED_CA_NAME/issue/$VAULT_CERT_DOMAIN" "common_name=web.$VAULT_CERT_DOMAIN" }}
 {{ .Data.certificate }}
 {{ .Data.issuing_ca }}
 {{ end }}
