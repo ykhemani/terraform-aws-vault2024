@@ -1,0 +1,11 @@
+{
+  "name": "add-fake-date",
+  "version": "0.0.1",
+  "description": "",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Yash Khemani yash@khemani.com",
+  "license": "MPL-2.0"
+}
