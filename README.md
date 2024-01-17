@@ -635,8 +635,11 @@ vault secrets list
 vault auth list
 vault policy list
 
-# Obtain a short-lived dynamic database credential
-vault read database/creds/mysql-web-role
+# Obtain short-lived dynamic database credentials (MySQL)
+vault read mysql-demo/creds/mysql-web-role
+
+# Obtain short-lived dynamic database credentials (MongoDB)
+vault read mongodb-demo/creds/mysql-web-role
 
 # Validate LDAP auth
 vault login -method=ldap username=john password=john
