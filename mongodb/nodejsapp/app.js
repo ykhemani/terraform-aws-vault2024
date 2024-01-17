@@ -47,6 +47,7 @@ async function seedDB() {
         await collection.insertMany(timeSeriesData);
 
         console.log("Database seeded with synthetic data! :)");
+        process.exit();
     } catch (err) {
         console.log(err.stack);
     }
