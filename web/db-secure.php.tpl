@@ -1,4 +1,4 @@
-{{ with secret "database/creds/mysql-web-role" }}
+{{ with secret "mysql-demo/creds/mysql-web-role" }}
 <?php
   // database connection
   define ('DBSERVER', getenv('MYSQL_HOST'));
