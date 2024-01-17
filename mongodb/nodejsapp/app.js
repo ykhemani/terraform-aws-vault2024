@@ -16,7 +16,7 @@ async function seedDB() {
         await client.connect();
         console.log("Connected correctly to server");
 
-        const collection = client.db("demodb").collection("<synthetic_data");
+        const collection = client.db("demodb").collection("synthetic_data");
 
         // make a bunch of time series data
         let timeSeriesData = [];
