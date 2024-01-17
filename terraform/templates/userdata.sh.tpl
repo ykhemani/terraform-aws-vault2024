@@ -39,6 +39,10 @@ mkdir -p \
 
 chown -R 100:1000 /data/vault
 
+# clone git repo
+cd /data && \
+  git clone $GITREPO $REPODIR
+
 cat <<EOF > /data/vault/conf/vault.hcl
 # raft storage
 storage "raft" {
@@ -86,6 +90,10 @@ EOF
 
 cp $CERT_DIR/wildcard/ca.pem /usr/local/share/ca-certificates/demo-ca.pem
 
+# Wildcard Key and Cert
+cat $CERT_DIR/wildcard/privkey.pem > $CERT_DIR/wildcard/privkey_cert.pem
+cat $CERT_DIR/wildcard/cert.pem >> $CERT_DIR/wildcard/privkey_cert.pem
+
 # Wildcard Fullchain
 cat $CERT_DIR/wildcard/cert.pem > $CERT_DIR/wildcard/fullchain.pem
 cat $CERT_DIR/wildcard/ca.pem >> $CERT_DIR/wildcard/fullchain.pem
@@ -113,6 +121,8 @@ export VAULT_ADDR=https://vault.$DOMAIN:8200
 export VAULT_SKIP_VERIFY=true
 export VAULT_TOKEN=\$(cat ~/venv/vault-init.json | jq -r .root_token)
 export VAULT_UNSEAL=\$(cat ~/venv/vault-init.json | jq -r .unseal_keys_b64[])
+
+export DOMAIN=$DOMAIN
 
 export CERT_DIR=$CERT_DIR
 
@@ -149,9 +159,18 @@ export MYSQL_VAULT_PASSWORD=van1tPassw#rd
 export MYSQL_STATIC_USERNAME=demouser
 export MYSQL_STATIC_PASSWORD=d3mopossw@rd
 
-export MYSQL_PATH=database
-export MYSQL_DB_PATH=mysql-demo
+export MYSQL_PATH=mysql-demo
 export MYSQL_ROLE=mysql-web-role
+
+# mongodb
+export MONGODB_PATH=mongodb-demo
+export MONGODB_ROLE=mongodb-demo-role
+export MONGODB_HOST=mongodb.$DOMAIN
+export MONGODB_PORT=27017
+export MONGODB_DB_NAME=admin
+export MONGODB_ROOT_USERNAME=root
+export MONGODB_ROOT_PASSWORD=p2sSwOrd
+export MONGODB_URL=mongodb.$DOMAIN:27017/admin?tls=true
 
 export KV_PATH=kv
 
@@ -185,7 +204,7 @@ fi
 
 EOF
 
-echo "127.0.0.1 vault.$DOMAIN mysql.$DOMAIN openldap.$DOMAIN ldap.$DOMAIN web.$VAULT_CERT_DOMAIN" >> /etc/hosts
+echo "127.0.0.1 vault.$DOMAIN mysql.$DOMAIN mongodb.$DOMAIN postgres.$DOMAIN openldap.$DOMAIN ldap.$DOMAIN web.$VAULT_CERT_DOMAIN" >> /etc/hosts
 
 # placeholder values
 export TRANSIT_ENCRYPT_TOKEN="TRANSIT_ENCRYPT_TOKEN"
@@ -244,6 +263,26 @@ services:
       - MYSQL_ROOT_PASSWORD_FILE=/run/secrets/mysql_root_password
     secrets:
       - mysql_root_password
+
+  mongodb:
+    container_name: mongodb
+    hostname: mongodb.$DOMAIN
+    image: mongo:7.0.5
+    restart: unless-stopped
+    volumes:
+      - /data/mongodb/data:/data/db
+    ports:
+      - 27017:27017
+    environment:
+      MONGO_INITDB_DATABASE: $MONGO_INITDB_DATABASE
+      MONGO_INITDB_ROOT_USERNAME_FILE: /run/secrets/mongodb_root_username
+      MONGO_INITDB_ROOT_PASSWORD_FILE: /run/secrets/mongodb_root_password
+    command: ["--bind_ip", "0.0.0.0", "--tlsMode", "requireTLS", "--tlsAllowConnectionsWithoutCertificates", "--tlsCertificateKeyFile", "/run/secrets/wildcard_key_and_cert", "--tlsCAFile", "/run/secrets/wildcard_ca_cert"]
+    secrets:
+      - wildcard_key_and_cert
+      - wildcard_ca_cert
+      - mongodb_root_username
+      - mongodb_root_password
 
   web:
     container_name: web
@@ -305,17 +344,25 @@ services:
 
 secrets:
   wildcard_privkey:
-    file: $CERT_DIR/wildcard/privkey.pem
+    file: /data/certs/wildcard/privkey.pem
   wildcard_cert:
-    file: $CERT_DIR/wildcard/fullchain.pem
+    file: /data/certs/wildcard/fullchain.pem
   wildcard_ca_cert:
-    file: $CERT_DIR/wildcard/ca.pem
+    file: /data/certs/wildcard/ca.pem
   wildcard_fullchain:
-    file: $CERT_DIR/wildcard/fullchain.pem
+    file: /data/certs/wildcard/fullchain.pem
+  wildcard_key_and_cert:
+    file: /data/certs/wildcard/privkey_cert.pem
+  wildcard_bundle:
+    file: /data/certs/wildcard/bundle.pem
   vault_license:
     file: /data/vault/license/vault.hclic
   mysql_root_password:
     file: /data/mysql/secrets/mysql_root_password
+  mongodb_root_username:
+    file: /data/mongodb/secrets/mongodb_root_username
+  mongodb_root_password:
+    file: /data/mongodb/secrets/mongodb_root_password
   web_pki_privkey:
     file: $CERT_DIR/$VAULT_CERT_DOMAIN/privkey.pem
   web_pki_cert:
@@ -505,9 +552,6 @@ vault write $TRANSFORM_TOKENIZATION_PATH/transformations/tokenization/credit-car
   allowed_roles=$TRANSFORM_TOKENIZATION_ROLE
 
 ##########
-# clone git repo
-cd /data && \
-  git clone $GITREPO $REPODIR
 
 # web docker image
 cd /data/$REPODIR/php && \
@@ -539,11 +583,17 @@ cat <<EOF >> /etc/ldap/ldap.conf
 TLS_CACERT      $CERT_DIR/wildcard/ca.pem
 EOF
 
-touch \
-  /data/mysql/etc/my.cnf \
-  /data/mysql/secrets/mysql_root_password
+touch /data/mysql/etc/my.cnf
 
 echo $MYSQL_ROOT_PASSWORD > /data/mysql/secrets/mysql_root_password
+
+# mongodb
+mkdir -p \
+  /data/mongodb/secrets \
+  /data/mongodb/data
+
+echo $MONGODB_ROOT_USERNAME > /data/mongodb/secrets/mongodb_root_username
+echo $MONGODB_ROOT_PASSWORD > /data/mongodb/secrets/mongodb_root_password
 
 # web
 
@@ -552,7 +602,7 @@ sed -e "s#__VAULT_CERT_DOMAIN__#$VAULT_CERT_DOMAIN#g" /data/php/conf/default-ssl
 ##########
 # mysql
 
-cd /data/docker-demo-stack && docker-compose up -d mysql && docker-compose up -d openldap
+cd /data/docker-demo-stack && docker-compose up -d mysql && docker-compose up -d openldap && docker-compose up -d mongodb
 
 # sleep to let mysql container restart
 sleep 20;
@@ -603,6 +653,24 @@ vault write $MYSQL_PATH/roles/$MYSQL_ROLE \
   creation_statements="GRANT ALL PRIVILEGES ON $MYSQL_DB_NAME.* TO '{{name}}'@'%' IDENTIFIED BY '{{password}}';" \
   default_ttl="2m" \
   max_ttl="10m"
+
+vault secrets disable $MONGODB_PATH
+vault secrets enable -path $MONGODB_PATH database
+
+vault write $MONGODB_PATH/config/$MONGODB_DB_NAME \
+  plugin_name=mongodb-database-plugin \
+  connection_url=mongodb://{{username}}:{{password}}@$MONGODB_URL \
+  tls_ca=@$CERT_DIR/wildcard/ca.pem \
+  allowed_roles=$MONGODB_ROLE \
+  username=$MONGODB_ROOT_USERNAME \
+  password=$MONGODB_ROOT_PASSWORD
+
+vault write $MONGODB_PATH/roles/$MONGODB_ROLE \
+  db_name=$MONGODB_DB_NAME \
+  creation_statements="{ \"db\": \"$MONGODB_DB_NAME\", \"roles\": [{ \"role\": \"readWrite\", \"db\": \"$MONGODB_DB_NAME\" }] }" \
+  revocation_statements='{"db":"demo"}' \
+  default_ttl="1h" \
+  max_ttl="24h"
 
 ##########
 # policies
@@ -936,6 +1004,16 @@ cat <<EOF > $VAULT_CERT_DIR/fullchain.tpl
 {{ .Data.issuing_ca }}
 {{ end }}
 EOF
+
+# generate synthetic data in mongodb
+mkdir -p /data/mongodb/nodejsapp && \
+  cd /data/$REPODIR/mongodb/nodejsapp && \
+  cp app.js package.json /data/mongodb/nodejsapp && \
+  cd /data/mongodb/nodejsapp && \
+  npm install express && \
+  npm install mongodb && \
+  npm install @faker-js/faker && \
+  node app.js
 
 mkdir -p /data/web && \
   cd /data/$REPODIR/web && \
