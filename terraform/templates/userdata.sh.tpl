@@ -562,9 +562,6 @@ mkdir -p /data/php/conf && \
   cp * /data/php/conf/ && \
   cd /data
 
-# mysql docker image
-docker pull mysql:5.7
-
 ##########
 # database and web
 
