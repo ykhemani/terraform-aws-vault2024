@@ -616,7 +616,14 @@ sudo su -
 # examine the cloud-init output log
 tail -f /var/log/cloud-init-output.log
 
-# examine docker containers (there should be 4: vault, mysql, openldap, vault-agent)
+# examine docker containers (there should be 6):
+#   mongodb
+#   mongo-gui
+#   mysql
+#   openldap
+#   vault
+#   web 
+
 docker ps -a
 
 # examine docker logs
