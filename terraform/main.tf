@@ -95,7 +95,7 @@ resource "tls_cert_request" "wildcard_csr" {
     "*.${var.domain}",
   ]
 
-  ip_addresses = ["127.0.0.1",aws_eip.eip.public_ip]
+  ip_addresses = ["127.0.0.1", aws_eip.eip.public_ip]
 }
 
 # wildcard cert
