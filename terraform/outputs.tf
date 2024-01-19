@@ -1,5 +1,5 @@
 output "a_hosts_file_entry" {
-  value = "${aws_instance.instance.public_ip} vault.${var.domain} mysql.${var.domain} web.demo.${var.domain}"
+  value = "${aws_instance.instance.public_ip} vault.${var.domain} mysql.${var.domain} postgres.${var.domain} mongodb.${var.domain}  mongo-ui.${var.domain} ldap.${var.domain} openldap.${var.domain} web.demo.${var.domain}"
 }
 
 output "b_connection_strings" {
