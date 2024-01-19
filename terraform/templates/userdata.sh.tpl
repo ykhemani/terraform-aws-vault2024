@@ -10,7 +10,7 @@ SSH_IMPORT_ID="${ssh_import_id}"
 GITREPO=${gitrepo}
 REPODIR=${repodir}
 
-if ["$SSH_IMPORT_ID" != "" ]
+if [ "$SSH_IMPORT_ID" != "" ]
 then
   ssh-import-id $SSH_IMPORT_ID
 fi
@@ -42,6 +42,10 @@ chown -R 100:1000 /data/vault
 # clone git repo
 cd /data && \
   git clone $GITREPO $REPODIR
+
+# clone mongo-gui repo
+cd /data && \
+  git clone https://github.com/ykhemani/mongo-gui.git
 
 cat <<EOF > /data/vault/conf/vault.hcl
 # raft storage
@@ -125,6 +129,7 @@ export VAULT_UNSEAL=\$(cat ~/venv/vault-init.json | jq -r .unseal_keys_b64[])
 export DOMAIN=$DOMAIN
 
 export CERT_DIR=$CERT_DIR
+export CA_CERT=$CERT_DIR/wildcard/ca.pem
 
 # ldap auth
 export LDAP_AUTH_PATH=ldap
@@ -204,7 +209,7 @@ fi
 
 EOF
 
-echo "127.0.0.1 vault.$DOMAIN mysql.$DOMAIN mongodb.$DOMAIN postgres.$DOMAIN openldap.$DOMAIN ldap.$DOMAIN web.$VAULT_CERT_DOMAIN" >> /etc/hosts
+echo "127.0.0.1 vault.$DOMAIN mysql.$DOMAIN mongodb.$DOMAIN mongo-ui.$DOMAIN postgres.$DOMAIN openldap.$DOMAIN ldap.$DOMAIN web.$VAULT_CERT_DOMAIN" >> /etc/hosts
 
 # placeholder values
 export TRANSIT_ENCRYPT_TOKEN="TRANSIT_ENCRYPT_TOKEN"
@@ -283,6 +288,24 @@ services:
       - wildcard_ca_cert
       - mongodb_root_username
       - mongodb_root_password
+
+  mongo-gui:
+    container_name: mongo-gui
+    image: mongo-gui:latest
+    restart: unless-stopped
+    ports:
+      - 3001:3001
+    environment:
+      - PORT=3001
+      - CA_CERT=/run/secrets/wildcard_ca_cert
+      - CERT=/run/secrets/wildcard_cert
+      - PRIVKEY=/run/secrets/wildcard_privkey
+      - URL_FILE=/run/secrets/mongodb_url
+    secrets:
+      - wildcard_privkey
+      - wildcard_cert
+      - wildcard_ca_cert
+      - mongodb_url
 
   web:
     container_name: web
@@ -363,6 +386,8 @@ secrets:
     file: /data/mongodb/secrets/mongodb_root_username
   mongodb_root_password:
     file: /data/mongodb/secrets/mongodb_root_password
+  mongodb_url:
+    file: /data/mongodb/secrets/mongodb_url
   web_pki_privkey:
     file: $CERT_DIR/$VAULT_CERT_DOMAIN/privkey.pem
   web_pki_cert:
@@ -372,6 +397,8 @@ EOF
 # Start Vault
  cd /data/docker-demo-stack && \
    docker-compose up -d vault
+
+sleep 10;
 
 ##########
 # Initialize Vault
@@ -553,6 +580,10 @@ vault write $TRANSFORM_TOKENIZATION_PATH/transformations/tokenization/credit-car
 
 ##########
 
+# mongo-gui docker image
+cd /data/mongo-gui && \
+  docker build -t mongo-gui:latest .
+
 # web docker image
 cd /data/$REPODIR/php && \
   docker build -t php:8.1.1-apache-mysqli .
@@ -591,18 +622,25 @@ mkdir -p \
 
 echo $MONGODB_ROOT_USERNAME > /data/mongodb/secrets/mongodb_root_username
 echo $MONGODB_ROOT_PASSWORD > /data/mongodb/secrets/mongodb_root_password
+echo "mongodb://$MONGODB_ROOT_USERNAME:$MONGODB_ROOT_PASSWORD@mongodb.$DOMAIN:$MONGODB_PORT/$MONGODB_DB_NAME?tls=true" > /data/mongodb/secrets/mongodb_url
 
 # web
 
 sed -e "s#__VAULT_CERT_DOMAIN__#$VAULT_CERT_DOMAIN#g" /data/php/conf/default-ssl.conf
 
 ##########
-# mysql
+# mysql, openldap, mongodb
 
-cd /data/docker-demo-stack && docker-compose up -d mysql && docker-compose up -d openldap && docker-compose up -d mongodb
+cd /data/docker-demo-stack && \
+  docker-compose up -d mysql && \
+  docker-compose up -d openldap && \
+  docker-compose up -d mongodb
 
 # sleep to let mysql container restart
 sleep 20;
+
+# mongo-gui
+docker-compose up -d mongo-gui
 
 # configure mysql
 mysql -u$MYSQL_ROOT_USERNAME -p$MYSQL_ROOT_PASSWORD -h$MYSQL_HOST -t<<EOF
