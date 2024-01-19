@@ -4,9 +4,10 @@ output "a_hosts_file_entry" {
 
 output "b_connection_strings" {
   value = {
-    ssh       = "ssh -i ./ssh_key ubuntu@${aws_instance.instance.public_ip}",
-    vault_url = "https://vault.${var.domain}:8200/",
-    web_url   = "https://web.demo.${var.domain}/",
+    a_ssh          = "ssh -i ./ssh_key ubuntu@${aws_instance.instance.public_ip}",
+    b_vault_url    = "https://vault.${var.domain}:8200/",
+    c_web_url      = "https://web.demo.${var.domain}/",
+    d_mongo_ui_url = "https://mongo-ui.${var.domain}:3001/"
   }
 }
 
