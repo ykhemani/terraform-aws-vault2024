@@ -18,6 +18,12 @@
           <a class="nav-link <?php if (basename($_SERVER['PHP_SELF']) == 'adp_transform.php') {echo 'active';} ?>" href="adp_transform.php">Advanced Data Protection</a>
         </li>
 -->
+      <li class="nav-item">
+        <a class="nav-link" target="vault" href="<?php echo getenv('VAULT_ADDR'); ?>">Vault</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" target="vault" href="<?php echo getenv('MONGO_GUI_URL'); ?>">Mongo-UI</a>
+        </li>
       </ul>
     </div>
   </div>
