@@ -177,6 +177,9 @@ export MONGODB_ROOT_USERNAME=root
 export MONGODB_ROOT_PASSWORD=p2sSwOrd
 export MONGODB_URL=mongodb.$DOMAIN:27017/admin?tls=true
 
+# mongo-gui
+MONGO_GUI_PORT=3001
+
 export KV_PATH=kv
 
 export KV_MYSQL_PATH=mysql-web
@@ -235,6 +238,7 @@ services:
       - /data/vault/data:/vault/data
       - /data/vault/conf:/vault/conf
       - /data/vault/audit:/vault/audit
+      - /data/vault/snapshots:/vault/snapshots
       - /data/vault/plugins:/vault/plugins
     environment:
       - VAULT_ADDR=https://vault.$DOMAIN:8200
@@ -294,9 +298,9 @@ services:
     image: mongo-gui:latest
     restart: unless-stopped
     ports:
-      - 3001:3001
+      - $MONGO_GUI_PORT:$MONGO_GUI_PORT
     environment:
-      - PORT=3001
+      - PORT=$MONGO_GUI_PORT
       - CA_CERT=/run/secrets/wildcard_ca_cert
       - CERT=/run/secrets/wildcard_cert
       - PRIVKEY=/run/secrets/wildcard_privkey
@@ -330,6 +334,7 @@ services:
       - MYSQL_HOST=\$MYSQL_HOST
       - VAULT_ADDR=https://vault.$DOMAIN:8200
       - WEB_SERVER_URL=https://web.$VAULT_CERT_DOMAIN/
+      - MONGO_GUI_URL=https://mongo-ui.$DOMAIN:$MONGO_GUI_PORT
     secrets:
       - web_pki_privkey
       - web_pki_cert
@@ -366,6 +371,7 @@ services:
       - wildcard_ca_cert
 
 secrets:
+  # wildcard certs
   wildcard_privkey:
     file: /data/certs/wildcard/privkey.pem
   wildcard_cert:
@@ -378,16 +384,24 @@ secrets:
     file: /data/certs/wildcard/privkey_cert.pem
   wildcard_bundle:
     file: /data/certs/wildcard/bundle.pem
+
+  # licensing
   vault_license:
     file: /data/vault/license/vault.hclic
+
+  # mysql
   mysql_root_password:
     file: /data/mysql/secrets/mysql_root_password
+
+  # mongodb
   mongodb_root_username:
     file: /data/mongodb/secrets/mongodb_root_username
   mongodb_root_password:
     file: /data/mongodb/secrets/mongodb_root_password
   mongodb_url:
     file: /data/mongodb/secrets/mongodb_url
+
+  # web app dynamic pki cert
   web_pki_privkey:
     file: $CERT_DIR/$VAULT_CERT_DOMAIN/privkey.pem
   web_pki_cert:
