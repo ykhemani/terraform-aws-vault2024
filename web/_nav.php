@@ -11,6 +11,9 @@
           <a class="nav-link <?php if (basename($_SERVER['PHP_SELF']) == 'index.php') {echo 'active';} ?>" aria-current="page" href="index.php">Home</a>
         </li>
         <li class="nav-item">
+          <a class="nav-link <?php if (basename($_SERVER['PHP_SELF']) == 'pki.php') {echo 'active';} ?>" aria-current="page" href="pki.php">Certificate Info</a>
+        </li>
+        <li class="nav-item">
           <a class="nav-link <?php if (basename($_SERVER['PHP_SELF']) == 'ddc_dp.php') {echo 'active';} ?>" href="ddc_dp.php">Dynamic DB Credentials</a>
         </li>
 <!--
@@ -23,6 +26,9 @@
         </li>
         <li class="nav-item">
           <a class="nav-link" target="vault" href="<?php echo getenv('MONGO_GUI_URL'); ?>">Mongo-UI</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" target="vault" href="<?php echo getenv('GITHUB_URL'); ?>"><i class="fa-brands fa-github"></i></a>
         </li>
       </ul>
     </div>
