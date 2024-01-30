@@ -24,8 +24,28 @@ _info "Starting bootstrap.sh"
 
 ########################################################################
 #
-# ssh keys
+# secrets
 #
+SECRETS=$(aws secretsmanager get-secret-value --secret-id $SECRET_ARN --query SecretString | jq -r .)
+
+SSH_IMPORT_ID=$(echo $SECRETS | jq -r .ssh_import_id)
+
+VAULT_LICENSE=$(echo $SECRETS | jq -r .vault_license)
+
+GITREPO=$(echo $SECRETS | jq -r .gitrepo)
+REPODIR=$(echo $SECRETS | jq -r .repodir)
+
+CERT_DIR=$(echo $SECRETS  | jq -r .cert_dir)
+WILDCARD_PRIVATE_KEY=$(echo $SECRETS  | jq -r .wildcard_private_key)
+WILDCARD_CERT=$(echo $SECRETS  | jq -r .wildcard_cert)
+CA_CERT=$(echo $SECRETS  | jq -r .ca_cert)
+
+DOMAIN=$(echo $SECRETS  | jq -r .domain)
+
+LDAP_USERS=$(echo $SECRETS  | jq -r .ldap_users)
+LDAP_USER_VAULT_ADMIN=$(echo $SECRETS  | jq -r .ldap_user_vault_admin)
+
+# ssh keys
 
 if [ "$SSH_IMPORT_ID" != "" ]
 then
