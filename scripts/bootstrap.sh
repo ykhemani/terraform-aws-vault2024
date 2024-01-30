@@ -500,6 +500,7 @@ _info "Source ~/venv/venv"
 _info "Unseal Vault"
 vault operator unseal $VAULT_UNSEAL
 
+# Audit Logs
 _info "Configure Vault audit logs"
 vault audit enable file \
   file_path=/vault/audit/audit.log && \
@@ -508,6 +509,7 @@ vault audit enable file \
 
 vault audit list -detailed
 
+# AppRole
 _info "Configure AppRole Auth"
 vault auth enable -path=$APPROLE_PATH approle
 
@@ -519,5 +521,679 @@ vault write auth/$APPROLE_PATH/role/$WEB_ROLE \
   token_max_ttl=720h \
   secret_id_num_uses=0 \
   token_policies=$WEB_POLICY
+
+# KV
+_info "Enable KV secrets engine"
+vault secrets disable $KV_PATH
+vault secrets enable -path $KV_PATH kv-v2
+
+_info "Write kv secret to $KV_PATH/engineering/app1"
+vault kv put $KV_PATH/engineering/app1 user=$(uuidgen) pass=$(uuidgen)
+
+# SSH
+_info "Enable ssh secrets engine"
+vault secrets enable -path $SSH_PATH ssh
+
+# Transit Secrets Engine
+_info "Enable transit secret engine"
+vault secrets disable $TRANSIT_PATH
+vault secrets enable -path $TRANSIT_PATH transit
+
+_info "Create transit encryption key"
+vault write -f $TRANSIT_PATH/keys/$TRANSIT_KEY
+
+_info "Create directory $TOKEN_PATH for writing Vault tokens related to transit operations"
+mkdir -p $TOKEN_PATH
+
+_info "Generate Vault token with decrypt policy"
+vault token create -format=json -ttl=720h -policy=$TRANSIT_DECRYPT_POLICY -orphan | tee $TOKEN_PATH/$TRANSIT_DECRYPT_POLICY-token.json
+_info "Set TRANSIT_DECRYPT_TOKEN"
+export TRANSIT_DECRYPT_TOKEN=$(cat $TOKEN_PATH/$TRANSIT_DECRYPT_POLICY-token.json | jq -r .auth.client_token)
+
+_info "Generate Vault token with encrypt policy"
+vault token create -format=json -ttl=720h -policy=$TRANSIT_ENCRYPT_POLICY -orphan | tee $TOKEN_PATH/$TRANSIT_ENCRYPT_POLICY-token.json
+_info "Set TRANSIT_ENCRYPT_TOKEN"
+export TRANSIT_ENCRYPT_TOKEN=$(cat $TOKEN_PATH/$TRANSIT_ENCRYPT_POLICY-token.json | jq -r .auth.client_token)
+
+# Transform Secret Engine (FPE)
+_info "Enable and configure transform secret engine for FPE"
+vault secrets disable $TRANSFORM_FPE_PATH
+vault secrets enable -path $TRANSFORM_FPE_PATH transform
+
+vault write $TRANSFORM_FPE_PATH/transformations/fpe/card-number \
+  template="builtin/creditcardnumber" \
+  tweak_source=internal \
+  allowed_roles=$TRANSFORM_FPE_ROLE
+
+ vault write $TRANSFORM_FPE_PATH/template/us-ssn-tmpl \
+   type=regex \
+   pattern='(?:SSN[: ]?|ssn[: ]?)?(\d{3})[- ]?(\d{2})[- ]?(\d{4})' \
+   encode_format='$1-$2-$3' \
+   decode_formats=space-separated='$1 $2 $3' \
+   decode_formats=last-four='*** ** $3' \
+   alphabet=builtin/numeric
+
+vault write $TRANSFORM_FPE_PATH/transformations/fpe/us-ssn \
+  template=us-ssn-tmpl \
+  tweak_source=internal \
+  allowed_roles='*'
+
+vault write $TRANSFORM_FPE_PATH/role/$TRANSFORM_FPE_ROLE transformations=card-number,us-ssn
+
+# Transform Secret Engine (Tokenization)
+_info "Enable and configure transform secret engine for tokenization"
+vault secrets disable $TRANSFORM_TOKENIZATION_PATH
+vault secrets enable -path $TRANSFORM_TOKENIZATION_PATH transform
+
+vault write $TRANSFORM_TOKENIZATION_PATH/role/$TRANSFORM_TOKENIZATION_ROLE transformations=credit-card
+
+vault write $TRANSFORM_TOKENIZATION_PATH/transformations/tokenization/credit-card \
+  allowed_roles=$TRANSFORM_TOKENIZATION_ROLE
+
+# PKI
+_info "Enable and configure PKI secret engines"
+
+_info "Make directory $VAULT_CERT_DIR for PKI certificates"
+mkdir -p $VAULT_CERT_DIR
+
+# Root CA
+_info "Enable Vault pki secret engine for root ca"
+vault secrets enable -path $ROOT_CA_NAME pki
+
+_info "Configure max ttl for root ca"
+vault secrets tune -max-lease-ttl=87600h $ROOT_CA_NAME
+
+_info "Generate root ca"
+vault write -format=json $ROOT_CA_NAME/root/generate/internal \
+  common_name="ca.$VAULT_CERT_DOMAIN" ttl=87600h \
+  issuer_name="root-2023" | tee \
+  >(jq -r .data.certificate > $VAULT_CERT_DIR/vault-ca-root.pem)
+
+_info "Configure CA and CRL URLs for root ca"
+vault write $ROOT_CA_NAME/config/urls \
+  issuing_certificates="$VAULT_ADDR/v1/$ROOT_CA_NAME/ca" \
+  crl_distribution_points="$VAULT_ADDR/v1/$ROOT_CA_NAME/crl"
+
+# Intermediate CA
+_info "Enable pki secret engine for intermediate ca"
+vault secrets enable -path $INTERMEDIATE_CA_NAME pki
+
+_info "Configure max ttl for intermediate ca"
+vault secrets tune -max-lease-ttl=43800h $INTERMEDIATE_CA_NAME
+
+_info "Configure CA and CRL URLs for intermediate ca"
+vault write $INTERMEDIATE_CA_NAME/config/urls \
+  issuing_certificates="$VAULT_ADDR/v1/$INTERMEDIATE_CA_NAME/ca" \
+  crl_distribution_points="$VAULT_ADDR/v1/$INTERMEDIATE_CA_NAME/crl"
+
+_info "Generate CSR and intermediate ca, will be signed by root ca"
+vault write -format=json \
+  $INTERMEDIATE_CA_NAME/intermediate/generate/internal \
+  common_name="$VAULT_CERT_DOMAIN Intermediate Authority" \
+  issuer_name="demo-seva-cafe-intermediate-2023" | tee \
+  >(jq -r .data.csr > $VAULT_CERT_DIR/vault-ca-intermediate.csr)
+
+_info "Sign intermediate ca csr using root ca"
+vault write -format=json \
+  $ROOT_CA_NAME/root/sign-intermediate \
+  issuer_ref="root-2023" \
+  csr=@$VAULT_CERT_DIR/vault-ca-intermediate.csr \
+  common_name="$VAULT_CERT_DOMAIN Intermediate Authority" ttl=43800h | tee \
+  >(jq -r .data.certificate > $VAULT_CERT_DIR/vault-ca-intermediate.pem)
+
+_info "Set intermediate ca as signed"
+vault write $INTERMEDIATE_CA_NAME/intermediate/set-signed \
+  certificate=@$VAULT_CERT_DIR/vault-ca-intermediate.pem
+
+_info "Create role for issuing certs in intermediate ca"
+vault write $INTERMEDIATE_CA_NAME/roles/$VAULT_CERT_DOMAIN \
+  allowed_domains="$VAULT_CERT_DOMAIN" \
+  allow_subdomains="true" \
+  ttl="1h" \
+  max_ttl="24h" \
+  generate_lease=true
+
+# Imported CA
+_info "Enable pki secret engine for imported ca"
+vault secrets enable -path=$IMPORTED_CA_NAME pki
+
+_info "Configure max ttl for imported ca"
+vault secrets tune -max-lease-ttl=87600h $IMPORTED_CA_NAME
+
+_info "Configure CA and CRL URLs for imported ca"
+vault write $IMPORTED_CA_NAME/config/urls \
+  issuing_certificates="$VAULT_ADDR/v1/$IMPORTED_CA_NAME/ca" \
+  crl_distribution_points="$VAULT_ADDR/v1/$IMPORTED_CA_NAME/crl"
+
+_info "Import PEM bundle into imported ca"
+vault write -format=json $IMPORTED_CA_NAME/config/ca pem_bundle=@$CERT_DIR/wildcard/bundle.pem
+
+_info "Create role for issuing certs in imported ca"
+vault write $IMPORTED_CA_NAME/roles/$VAULT_CERT_DOMAIN \
+  allowed_domains="$VAULT_CERT_DOMAIN" \
+  allow_subdomains="true" \
+  ttl="1h" \
+  max_ttl="24h" \
+  generate_lease=true
+
+# clone mongo-gui repo
+_info "Cloning mongo-gui repo"
+cd /data && \
+  git clone https://github.com/ykhemani/mongo-gui.git
+
+_info "Build mongo-gui image"
+cd /data/mongo-gui && \
+  docker build -t mongo-gui:latest .
+
+_info "Build web image"
+cd /data/$REPODIR/php && \
+  docker build -t php:8.1.1-apache-mysqli .
+
+_info "Copy php config to /data/php/conf"
+mkdir -p /data/php/conf && \
+  cd /data/$REPODIR/php/conf && \
+  cp * /data/php/conf/ && \
+  cd /data
+
+_info "Make directories for mysql, mongodb, openldap, and Vault minted PKI certificates"
+mkdir -p \
+  /data/mysql/etc \
+  /data/mysql/var/lib/mysql \
+  /data/mysql/dump \
+  /data/mysql/secrets \
+  /data/mongodb/secrets \
+  /data/mongodb/data \
+  /data/openldap \
+  /data/php/conf \
+  $CERT_DIR/web.$VAULT_CERT_DOMAIN
+
+_info "Set owner for openldap directory"
+chown 1001 /data/openldap
+
+_info "Add TLS_CACERT to host LDAP config"
+cat <<EOF >> /etc/ldap/ldap.conf
+TLS_CACERT      $CERT_DIR/wildcard/ca.pem
+EOF
+
+_info "Create mysql config file"
+touch /data/mysql/etc/my.cnf
+
+_info "Write mysql root password"
+echo $MYSQL_ROOT_PASSWORD > /data/mysql/secrets/mysql_root_password
+
+_info "Write mongo secrets: root user, root password, mongo url"
+echo $MONGODB_ROOT_USERNAME > /data/mongodb/secrets/mongodb_root_username
+echo $MONGODB_ROOT_PASSWORD > /data/mongodb/secrets/mongodb_root_password
+echo "mongodb://$MONGODB_ROOT_USERNAME:$MONGODB_ROOT_PASSWORD@mongodb.$DOMAIN:$MONGODB_PORT/$MONGODB_DB_NAME?tls=true" > /data/mongodb/secrets/mongodb_url
+
+_info "Replace VAULT_CERT_DOMAIN placeholder in php ssl config"
+sed -e "s#__VAULT_CERT_DOMAIN__#$VAULT_CERT_DOMAIN#g" /data/php/conf/default-ssl.conf
+
+_info "Start mysql container"
+cd /data/docker-demo-stack && \
+  docker-compose up -d mysql
+
+_info "Start mongodb container"
+cd /data/docker-demo-stack && \
+  docker-compose up -d mongodb
+
+_info "Start openldap container"
+cd /data/docker-demo-stack && \
+  docker-compose up -d openldap
+
+_info "Sleep 20"
+sleep 20
+
+_info "Start mongo-gui container"
+cd /data/docker-demo-stack && \
+  docker-compose up -d mongo-gui
+
+_info "Configure mysql"
+mysql -u$MYSQL_ROOT_USERNAME -p$MYSQL_ROOT_PASSWORD -h$MYSQL_HOST -t<<EOF
+DROP user if exists '$MYSQL_VAULT_USERNAME';
+CREATE USER '$MYSQL_VAULT_USERNAME'@'%' IDENTIFIED BY '$MYSQL_VAULT_PASSWORD';
+GRANT ALL PRIVILEGES ON *.* TO '$MYSQL_VAULT_USERNAME'@'%' WITH GRANT OPTION;
+
+DROP user if exists '$MYSQL_STATIC_USERNAME';
+CREATE USER '$MYSQL_STATIC_USERNAME'@'%' IDENTIFIED BY '$MYSQL_STATIC_PASSWORD';
+GRANT ALL PRIVILEGES ON demodb.pii to '$MYSQL_STATIC_USERNAME'@'%';
+
+DROP DATABASE IF EXISTS $MYSQL_DB_NAME;
+CREATE DATABASE $MYSQL_DB_NAME;
+
+CREATE TABLE IF NOT EXISTS $MYSQL_DB_NAME.$MYSQL_DB_TABLE (
+  id INT NOT NULL AUTO_INCREMENT,
+  name varchar(256),
+  phone varchar(256),
+  email varchar(256),
+  dob varchar(256),
+  ssn varchar(256),
+  ccn varchar(256),
+  expire varchar(256),
+  brn varchar(256),
+  ban varchar(256),
+  PRIMARY KEY ( id )
+);
+
+GRANT ALL PRIVILEGES ON $MYSQL_DB_NAME.* TO '$MYSQL_STATIC_USERNAME'@'%' IDENTIFIED BY '$MYSQL_STATIC_PASSWORD';
+EOF
+
+_info "Enable database secrets engine for myql"
+vault secrets disable $MYSQL_PATH
+vault secrets enable -path $MYSQL_PATH database
+
+_info "Configure vault mysql database connection"
+vault write $MYSQL_PATH/config/$MYSQL_DB_NAME \
+  plugin_name=mysql-database-plugin \
+  connection_url="{{username}}:{{password}}@tcp($MYSQL_HOST:$MYSQL_PORT)/" \
+  allowed_roles="$MYSQL_ROLE" \
+  username="$MYSQL_VAULT_USERNAME" \
+  password="$MYSQL_VAULT_PASSWORD"
+
+_info "Configure vault mysql role"
+vault write $MYSQL_PATH/roles/$MYSQL_ROLE \
+  db_name=$MYSQL_DB_NAME \
+  creation_statements="GRANT ALL PRIVILEGES ON $MYSQL_DB_NAME.* TO '{{name}}'@'%' IDENTIFIED BY '{{password}}';" \
+  default_ttl="2m" \
+  max_ttl="10m"
+
+_info "Enable database secrets engine for mongo"
+vault secrets disable $MONGODB_PATH
+vault secrets enable -path $MONGODB_PATH database
+
+_info "Configure vault mongo database connection"
+vault write $MONGODB_PATH/config/$MONGODB_DB_NAME \
+  plugin_name=mongodb-database-plugin \
+  connection_url=mongodb://{{username}}:{{password}}@$MONGODB_URL \
+  tls_ca=@$CERT_DIR/wildcard/ca.pem \
+  allowed_roles=$MONGODB_ROLE \
+  username=$MONGODB_ROOT_USERNAME \
+  password=$MONGODB_ROOT_PASSWORD
+
+_info "Configure vault mongo role"
+vault write $MONGODB_PATH/roles/$MONGODB_ROLE \
+  db_name=$MONGODB_DB_NAME \
+  creation_statements="{ \"db\": \"$MONGODB_DB_NAME\", \"roles\": [{ \"role\": \"readWrite\", \"db\": \"$MONGODB_DB_NAME\" }] }" \
+  revocation_statements='{"db":"demo"}' \
+  default_ttl="1h" \
+  max_ttl="24h"
+
+# Policies
+_info "Configure vault policies"
+
+_info "Configure vault admin policy"
+vault policy write admin -<<EOF
+# full admin rights
+path "*" {
+  capabilities = ["create", "read", "update", "delete", "list", "sudo"]
+}
+
+EOF
+
+_info "Configure vault web application policy"
+vault policy write $WEB_POLICY -<<EOF
+# pki cert consumer - intermediate CA
+path "$INTERMEDIATE_CA_NAME/*" {
+  capabilities = ["list"]
+}
+path "$INTERMEDIATE_CA_NAME/issue*" {
+  capabilities = ["create","update"]
+}
+path "$INTERMEDIATE_CA_NAME/config*" {
+  capabilities = ["list","create","update"]
+}
+path "$INTERMEDIATE_CA_NAME/config/crl*" {
+  capabilities = ["read","list","create","update"]
+}
+path "$INTERMEDIATE_CA_NAME/config/urls*" {
+  capabilities = ["read","list","create","update"]
+}
+
+# pki cert consumer - imported CA
+path "$IMPORTED_CA_NAME/*" {
+  capabilities = ["list"]
+}
+path "$IMPORTED_CA_NAME/issue*" {
+  capabilities = ["create","update"]
+}
+path "$IMPORTED_CA_NAME/config*" {
+  capabilities = ["list","create","update"]
+}
+path "$IMPORTED_CA_NAME/config/crl*" {
+  capabilities = ["read","list","create","update"]
+}
+path "$IMPORTED_CA_NAME/config/urls*" {
+  capabilities = ["read","list","create","update"]
+}
+
+# kv - static db creds
+path "$KV_PATH/data/$KV_MYSQL_PATH" {
+  capabilities = ["read"]
+}
+
+# dynamic db creds
+path "$MYSQL_PATH/creds/$MYSQL_ROLE" {
+  capabilities = ["read"]
+}
+
+# token management
+path "auth/token/renew" {
+  capabilities = ["update"]
+}
+path "auth/token/renew-self" {
+  capabilities = ["update"]
+}
+EOF
+
+_info "Configure vault decrypt policy"
+vault policy write $TRANSIT_DECRYPT_POLICY -<<EOF
+# grant permissions to decrypt data
+path "$TRANSIT_PATH/decrypt/$TRANSIT_KEY" {
+  capabilities = [ "update" ]
+}
+
+EOF
+
+_info "Configure vault encrypt / rotate policy"
+vault policy write $TRANSIT_ENCRYPT_POLICY - <<EOF
+# grant permissions to encrypt data
+path "$TRANSIT_PATH/encrypt/$TRANSIT_KEY" {
+  capabilities = [ "update" ]
+}
+
+# grant permissions to read encryption key
+path "$TRANSIT_PATH/keys/$TRANSIT_KEY" {
+  capabilities = [ "read" ]
+}
+
+# grant permissions to rotate encryption key
+path "$TRANSIT_PATH/keys/$TRANSIT_KEY/rotate" {
+  capabilities = [ "update" ]
+}
+
+EOF
+
+_info "Configure vault engineers policy"
+vault policy write engineers - <<EOF
+# grant permissions to engineering kv secrets
+path "$KV_PATH/metadata/engineering" {
+  capabilities = ["list"]
+}
+
+path "$KV_PATH/data/engineering/*" {
+  capabilities = ["read", "list", "update", "create"]
+}
+EOF
+
+# Auth
+_info "Enable vault userpass auth"
+vault auth disable $USERPASS_AUTH_PATH
+vault auth enable -path=$USERPASS_AUTH_PATH userpass
+
+_info "Enable vault ldap auth"
+vault auth disable $LDAP_AUTH_PATH
+vault auth enable -path=$LDAP_AUTH_PATH ldap
+
+_info "Configure vault ldap auth"
+vault write auth/$LDAP_AUTH_PATH/config \
+  binddn="cn=admin,dc=example,dc=com" \
+  bindpass='password' \
+  userattr='uid' \
+  url="ldaps://openldap.$DOMAIN" \
+  userdn="ou=users,dc=example,dc=com" \
+  groupdn="ou=users,dc=example,dc=com" \
+  groupattr="groupOfNames" \
+  certificate=@$CERT_DIR/wildcard/ca.pem \
+  insecure_tls=false \
+  starttls=true
+
+_info "Configure vault ldap engineers group"
+vault write auth/$LDAP_AUTH_PATH/groups/engineers policies=engineers
+
+# Generate Vault clients
+_info "Generate vault clients"
+
+_info "Get userpass mount accessor"
+export USERPASS_MOUNT_ACCESSOR=$(vault auth list -detailed | grep $USERPASS_AUTH_PATH | awk '{print $3}')
+_info "USERPASS_MOUNT_ACCESSOR is $USERPASS_MOUNT_ACCESSOR"
+
+_info "Get ldap mount accessor"
+export LDAP_MOUNT_ACCESSOR=$(vault auth list -detailed  | grep $LDAP_AUTH_PATH | awk '{print $3}')
+_info "LDAP_MOUNT_ACCESSOR is $LDAP_MOUNT_ACCESSOR"
+
+for i in $${LDAP_USERS//,/ }
+do
+  _info "Generate vault entity for $i"
+  VAULT_ENTITY_ID=$(vault write -format=json identity/entity name="$i" policies="$i" | jq -r ".data.id")
+
+  _info "Generate userpass user $i"
+  vault write auth/$USERPASS_AUTH_PATH/users/$i password=$i policies=$i
+
+  _info "Map ldap alias $i to entity $i"
+  vault write identity/entity-alias name="$i" \
+     canonical_id=$VAULT_ENTITY_ID \
+     mount_accessor=$LDAP_MOUNT_ACCESSOR \
+
+  _info "Map userpass alias $i to entity $i"
+  vault write identity/entity-alias name="$i" \
+    canonical_id=$VAULT_ENTITY_ID \
+    mount_accessor=$USERPASS_MOUNT_ACCESSOR
+
+  _info "Write test kv secret for user $i"
+  vault kv put $KV_PATH/$i/test x=$(uuidgen) y=$(uuidgen)
+
+  _info "Create policy for $i"
+  vault policy write $i - <<EOF
+# grant permissions to user kv secrets
+path "$KV_PATH/metadata/$i" {
+  capabilities = ["list"]
+}
+
+path "$KV_PATH/data/$i/*" {
+  capabilities = ["read", "list", "update", "create"]
+}
+EOF
+  #vault write auth/$LDAP_AUTH_PATH/users/$i policies=$i
+
+  _info "Logging into vault via ldap auth as $i"
+  VAULT_TOKEN=$(vault login -format=json -method=ldap username=$i password=$i | jq -r .auth.client_token) vault kv list -format=json kv/$i > /dev/null
+
+  _info "Logging into vault via userpass auth as $i"
+  VAULT_TOKEN=$(vault login -format=json -method=userpass username=$i password=$i | jq -r .auth.client_token) vault kv list -format=json kv/$i > /dev/null
+done
+
+_info "Cleaning up ~/.vault-token"
+rm -f ~/.vault-token
+
+_info "Configuring vault admin user $LDAP_USER_VAULT_ADMIN"
+vault write auth/$LDAP_AUTH_PATH/users/$LDAP_USER_VAULT_ADMIN \
+  policies=$LDAP_USER_VAULT_ADMIN,admin
+
+vault write auth/$USERPASS_AUTH_PATH/users/$LDAP_USER_VAULT_ADMIN \
+  password=$LDAP_USER_VAULT_ADMIN \
+  policies=$LDAP_USER_VAULT_ADMIN,admin
+
+
+
+# Vault Agent
+_info "Configuring Vault Agent"
+mkdir -p $VAULT_AGENT_PATH
+
+_info "Writing AppRole role_id for Vault Agent"
+export VAULT_ROLE_ID=$(vault read -format=json auth/$APPROLE_PATH/role/$WEB_ROLE/role-id | jq -r '.data.role_id')
+echo $VAULT_ROLE_ID > $VAULT_AGENT_PATH/role_id
+
+_info "Writing AppRole secret_id for Vault Agent"
+export VAULT_SECRET_ID=$(vault write -f -format=json auth/$APPROLE_PATH/role/$WEB_ROLE/secret-id | jq -r '.data.secret_id')
+echo $VAULT_SECRET_ID > $VAULT_AGENT_PATH/secret_id
+
+_info "Writing vault-agent systemd unit file"
+cat <<EOF > /etc/systemd/system/vault-agent.service
+[Unit]
+Description=Vault Agent
+#Requires=vault.service
+#After=vault.service
+
+[Service]
+Restart=on-failure
+EnvironmentFile=$VAULT_AGENT_PATH/vault-agent.env
+PermissionsStartOnly=true
+ExecStart=/usr/bin/vault agent -config $VAULT_AGENT_PATH/vault-agent.hcl
+KillSignal=SIGTERM
+User=root
+Group=root
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+_info "Writing vault-agent environment file"
+cat <<EOF > $VAULT_AGENT_PATH/vault-agent.env
+VAULT_ADDR=https://vault.$DOMAIN:8200
+VAULT_SKIP_VERIFY=true
+TRANSIT_ENCRYPT_TOKEN=$TRANSIT_ENCRYPT_TOKEN
+TRANSIT_DECRYPT_TOKEN=$TRANSIT_DECRYPT_TOKEN
+MYSQL_STATIC_USERNAME=$MYSQL_STATIC_USERNAME
+MYSQL_STATIC_PASSWORD=$MYSQL_STATIC_PASSWORD
+MYSQL_DB_NAME=$MYSQL_DB_NAME
+MYSQL_DB_TABLE=$MYSQL_DB_TABLE
+MYSQL_HOST=$MYSQL_HOST
+WEB_SERVER_URL=https://web.$VAULT_CERT_DOMAIN/
+EOF
+
+cat <<EOF > $VAULT_AGENT_PATH/vault-agent.hcl
+exit_after_auth = false
+
+pid_file = "$VAULT_AGENT_PATH/pidfile"
+
+vault {
+  address = "$VAULT_ADDR"
+}
+
+auto_auth {
+  method "approle" {
+    mount_path = "auth/approle"
+    config = {
+      type                = "approle"
+      role                = "demo-role"
+      role_id_file_path   = "$VAULT_AGENT_PATH/role_id"
+      secret_id_file_path = "$VAULT_AGENT_PATH/secret_id"
+      bind_secret_id      = false
+
+      remove_secret_id_file_after_reading = false
+    }
+  }
+
+  sink "file" {
+    config = {
+      path = "$VAULT_AGENT_PATH/vault-token"
+    }
+  }
+}
+
+cache {
+  use_auto_auth_token = true
+}
+
+listener "tcp" {
+  address = "127.0.0.1:8100"
+  tls_disable = true
+}
+
+template_config {
+  static_secret_render_interval = "15s"
+}
+
+template {
+  source      = "/data/web/db-secure.php.tpl"
+  destination = "/data/web/db-secure.php"
+  perms       = 0644
+  #command     =
+}
+
+#template {
+#  source      = "/data/web/db-static.php.tpl"
+#  destination = "/data/web/db-static.php"
+#  perms       = 0644
+#}
+
+template {
+  source       = "$VAULT_CERT_DIR/privkey.tpl"
+  destination  = "$VAULT_CERT_DIR/privkey.pem"
+  perms        = 0644
+  command      = "$VAULT_AGENT_PATH/restart-web.sh"
+}
+
+template {
+  source       = "$VAULT_CERT_DIR/fullchain.tpl"
+  destination  = "$VAULT_CERT_DIR/fullchain.pem"
+  perms        = 0644
+  command      = "$VAULT_AGENT_PATH/restart-web.sh"
+}
+
+EOF
+
+_info "Writing vault agent restart-web.sh script"
+cat <<EOF > $VAULT_AGENT_PATH/restart-web.sh
+#!/bin/bash
+
+export TRANSIT_ENCRYPT_TOKEN=$TRANSIT_ENCRYPT_TOKEN
+export TRANSIT_DECRYPT_TOKEN=$TRANSIT_DECRYPT_TOKEN
+export MYSQL_STATIC_USERNAME=$MYSQL_STATIC_USERNAME
+export MYSQL_STATIC_PASSWORD=$MYSQL_STATIC_PASSWORD
+export MYSQL_DB_NAME=$MYSQL_DB_NAME
+export MYSQL_DB_TABLE=$MYSQL_DB_TABLE
+export MYSQL_HOST=$MYSQL_HOST
+export VAULT_ADDR=$VAULT_ADDR
+export WEB_SERVER_URL=https://web.$VAULT_CERT_DOMAIN/
+
+cd /data/docker-demo-stack && \
+  docker-compose stop web && \
+  docker-compose rm -f web && \
+  docker-compose up -d web 
+
+#docker exec -it web apachectl -k graceful
+
+EOF
+
+_info "Setting permissions on restart-web.sh script"
+chmod 0755 $VAULT_AGENT_PATH/restart-web.sh
+
+_info "Writing privkey.tpl template file"
+cat <<EOF > $VAULT_CERT_DIR/privkey.tpl
+{{ with secret "$IMPORTED_CA_NAME/issue/$VAULT_CERT_DOMAIN" "common_name=web.$VAULT_CERT_DOMAIN" }}
+{{ .Data.private_key }}
+{{ end }}
+EOF
+
+_info "Writing fullchain.tpl template file"
+cat <<EOF > $VAULT_CERT_DIR/fullchain.tpl
+{{ with secret "$IMPORTED_CA_NAME/issue/$VAULT_CERT_DOMAIN" "common_name=web.$VAULT_CERT_DOMAIN" }}
+{{ .Data.certificate }}
+{{ .Data.issuing_ca }}
+{{ end }}
+EOF
+
+_info "Copy web app to /data/web"
+mkdir -p /data/web && \
+  cd /data/$REPODIR/web && \
+  cp -r * /data/web && \
+  cd /data
+
+_info "Start vault-agent"
+systemctl daemon-reload && \
+  systemctl enable vault-agent && \
+  systemctl start vault-agent
+
+# Mongo synthetic data
+_info "Generate synthetic data in mongo"
+mkdir -p /data/mongodb/nodejsapp && \
+  cd /data/$REPODIR/mongodb/nodejsapp && \
+  cp app.js package.json /data/mongodb/nodejsapp && \
+  cd /data/mongodb/nodejsapp && \
+  npm install express && \
+  npm install mongodb && \
+  npm install @faker-js/faker && \
+  node app.js
 
 _info "Finished bootstrap.sh"
