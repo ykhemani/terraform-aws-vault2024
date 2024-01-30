@@ -81,7 +81,11 @@ _info "Writing wildcard private key and cert to $CERT_DIR/wildcard/privkey_cert.
 cat $CERT_DIR/wildcard/privkey.pem > $CERT_DIR/wildcard/privkey_cert.pem
 cat $CERT_DIR/wildcard/cert.pem >> $CERT_DIR/wildcard/privkey_cert.pem
 
-_info "Writing private key, cert and ca cert (fullchain) to $CERT_DIR/wildcard/bundle.pem"
+_info "Writing cert and ca cert (fullchain) to $CERT_DIR/wildcard/fullchain.pem"
+cat $CERT_DIR/wildcard/cert.pem >> $CERT_DIR/wildcard/fullchain.pem
+cat $CERT_DIR/wildcard/ca.pem >> $CERT_DIR/wildcard/fullchain.pem
+
+_info "Writing private key, cert and ca cert (bundle) to $CERT_DIR/wildcard/bundle.pem"
 cat $CERT_DIR/wildcard/privkey.pem > $CERT_DIR/wildcard/bundle.pem
 cat $CERT_DIR/wildcard/cert.pem >> $CERT_DIR/wildcard/bundle.pem
 cat $CERT_DIR/wildcard/ca.pem >> $CERT_DIR/wildcard/bundle.pem
