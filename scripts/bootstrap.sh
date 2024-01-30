@@ -430,13 +430,20 @@ services:
       - wildcard_cert
       - wildcard_ca_cert
 
-  # ldap-ui:
-  #   container_name: ldap-ui
-  #   hostname: ldap-ui.example.com
-  #   image: dnknth/ldap-ui:latest
-  #   restart: unless-stopped
-  #   ports:
-  #     - 5000:5000
+  ldap-ui:
+    container_name: ldap-ui
+    hostname: ldap-ui.example.com
+    image: dnknth/ldap-ui:latest
+    restart: unless-stopped
+    ports:
+      - 5000:5000
+    environment:
+      - LDAP_URL=ldaps://openldap.example.com
+      - USE_TLS=true
+      - INSECURE_TLS=true
+      - BASE_DN=dc=example,dc=com
+      - BIND_DN=cn=admin,dc=example,dc=com
+      - BIND_PASSWORD=password
 
 secrets:
   # wildcard certs
@@ -743,6 +750,10 @@ cd /data/docker-demo-stack && \
 
 _info "Sleep 20"
 sleep 20
+
+_info "Start ldap-ui container"
+cd /data/docker-demo-stack && \
+  docker-compose up -d ldap-ui
 
 _info "Start mongo-gui container"
 cd /data/docker-demo-stack && \
