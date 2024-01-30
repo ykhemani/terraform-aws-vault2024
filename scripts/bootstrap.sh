@@ -27,63 +27,6 @@ _info "Starting bootstrap.sh"
 # ssh keys
 #
 
-# RSA private key
-if [ "$SSH_HOST_RSA_KEY" == "" ]
-then
-  _error "SSH_HOST_RSA_KEY is not set"
-else
-  _info "Setting host RSA private key"
-  echo $SSH_HOST_RSA_KEY > /etc/ssh/ssh_host_rsa_key
-fi
-
-# RSA public key
-if [ "$SSH_HOST_RSA_KEY_PUB" == "" ]
-then
-  _error "SSH_HOST_RSA_KEY_PUB is not set"
-else
-  _info "Setting host RSA public key"
-  echo $SSH_HOST_RSA_KEY_PUB > /etc/ssh/ssh_host_rsa_key.pub
-fi
-
-# ECDSA private key
-if [ "$SSH_HOST_ECDSA_KEY" == "" ]
-then
-  _error "SSH_HOST_ECDSA_KEY is not set"
-else
-  _info "Setting host ECDSA private key"
-  echo $SSH_HOST_ECDSA_KEY > /etc/ssh/ssh_host_ecdsa_key
-fi
-
-# ECDSA public key
-if [ "$SSH_HOST_ECDSA_KEY_PUB" == "" ]
-then
-  _error "SSH_HOST_ECDSA_KEY_PUB is not set"
-else
-  _info "Setting host ECDSA public key"
-  echo $SSH_HOST_ECDSA_KEY_PUB > /etc/ssh/ssh_host_ecdsa_key.pub
-fi
-
-# ED25519 private key
-if [ "$SSH_HOST_ED25519_KEY" == "" ]
-then
-  _error "SSH_HOST_ED25519_KEY is not set"
-else
-  _info "Setting host ED25519 private key"
-  echo $SSH_HOST_ED25519_KEY > /etc/ssh/ssh_host_ed25519_key
-fi
-
-# ED25519 public key
-if [ "$SSH_HOST_ED25519_KEY_PUB" == "" ]
-then
-  _error "SSH_HOST_ED25519_KEY_PUB is not set"
-else
-  _info "Setting host ED25519 public key"
-  echo $SSH_HOST_ED25519_KEY_PUB > /etc/ssh/ssh_host_ed25519_key.pub
-fi
-
-_info "Restarting ssh daemon"
-systemctl restart ssh
-
 if [ "$SSH_IMPORT_ID" != "" ]
 then
   _info "Importing ssh keys for $SSH_IMPORT_ID"
