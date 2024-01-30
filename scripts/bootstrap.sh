@@ -149,11 +149,11 @@ storage "raft" {
   path    = "/vault/data"
   node_id = "node_1"
 
- retry_join {
-    leader_api_addr = "https://vault.$DOMAIN:8200"
+  retry_join {
+    leader_api_addr     = "https://vault.$DOMAIN:8200"
     leader_ca_cert_file = "/run/secrets/wildcard_ca_cert"
-    tls_cert_file = "/run/secrets/wildcard_cert"
-    tls_key_file = "/run/secrets/wildcard_privkey"
+    tls_cert_file       = "/run/secrets/wildcard_cert"
+    tls_key_file        = "/run/secrets/wildcard_privkey"
   }
 }
 
@@ -961,7 +961,7 @@ _info "Get ldap mount accessor"
 export LDAP_MOUNT_ACCESSOR=$(vault auth list -detailed  | grep $LDAP_AUTH_PATH | awk '{print $3}')
 _info "LDAP_MOUNT_ACCESSOR is $LDAP_MOUNT_ACCESSOR"
 
-for i in $${LDAP_USERS//,/ }
+for i in ${LDAP_USERS//,/ }
 do
   _info "Generate vault entity for $i"
   VAULT_ENTITY_ID=$(vault write -format=json identity/entity name="$i" policies="$i" | jq -r ".data.id")
