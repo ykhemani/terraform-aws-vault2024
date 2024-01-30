@@ -76,7 +76,9 @@ then
   _error "WILDCARD_PRIVATE_KEY is not set"
 else
   _info "Writing WILDCARD_PRIVATE_KEY to $CERT_DIR/wildcard/privkey.pem"
-  echo $WILDCARD_PRIVATE_KEY > $CERT_DIR/wildcard/privkey.pem
+  cat <<EOF > $CERT_DIR/wildcard/privkey.pem
+$WILDCARD_PRIVATE_KEY
+EOF
 fi
 
 if [ "$WILDCARD_CERT" == "" ]
@@ -84,7 +86,9 @@ then
   _error "WILDCARD_CERT is not set"
 else
   _info "Writing WILDCARD_CERT to $CERT_DIR/wildcard/cert.pem"
-  echo $WILDCARD_CERT > $CERT_DIR/wildcard/cert.pem
+  cat <<EOF > $CERT_DIR/wildcard/cert.pem
+$WILDCARD_CERT
+EOF
 fi
 
 if [ "$CA_CERT" == "" ]
@@ -92,9 +96,12 @@ then
   _error "CA_CERT is not set"
 else
   _info "Writing CA_CERT to $CERT_DIR/wildcard/ca.pem"
-  echo $CA_CERT > $CERT_DIR/wildcard/ca.pem
-  _info "Writing CA_CERT to /usr/local/share/ca-certificates/demo-ca.pem"
-  echo $CA_CERT > /usr/local/share/ca-certificates/demo-ca.pem
+  cat <<EOF > $CERT_DIR/wildcard/ca.pem
+$CA_CERT
+EOF
+
+  _info "Copying $CERT_DIR/wildcard/ca.pem to /usr/local/share/ca-certificates/demo-ca.pem"
+  cp $CERT_DIR/wildcard/ca.pem /usr/local/share/ca-certificates/demo-ca.pem
 fi
 
 _info "Writing wildcard private key and cert to $CERT_DIR/wildcard/privkey_cert.pem"
