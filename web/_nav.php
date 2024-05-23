@@ -28,7 +28,7 @@
           <a class="nav-link" target="vault" href="<?php echo getenv('MONGO_GUI_URL'); ?>">Mongo-UI</a>
         </li>
         <li class="nav-item">
-          <a class="nav-link" target="vault" href="<?php echo getenv('GITHUB_URL'); ?>"><i class="fa-brands fa-github"></i></a>
+          <a class="nav-link" target="vault" href="<?php echo getenv('GITREPO'); ?>"><i class="fa-brands fa-github"></i></a>
         </li>
       </ul>
     </div>
