@@ -14,12 +14,8 @@ This demo environment has been designed to minimize dependencies.
 ### Prerequisites
 
 * A machine image with the required software, built using HashiCorp [Packer](https://packer.io) and [this Packer template](https://github.com/ykhemani/packer-ubuntu-focal).
-* [Terraform](https://developer.hashicorp.com/terraform/install) CLI. Testing has been done with version 1.6.5, but other versions of Terraform may also work.
-* [AWS Provider](https://registry.terraform.io/providers/hashicorp/aws/) for Terraform. Testing has been done with version 5.31.0. The AWS provider will be downloaded automatically from the Terraform Registry when you initialize Terraform in this directory.
-* [HCP Provider](https://registry.terraform.io/providers/hashicorp/hcp/latest) for Terraform. Testing has been done with version 0.79.0. The HCP provider will be downloaded automatically from the Terraform Registry when you initialize Terraform in this directory.
-* [Local Provider](https://registry.terraform.io/providers/hashicorp/local/) for Terraform. Testing has been done with version 2.4.1. The Local provider will be downloaded automatically from the Terraform Registry when you initialize Terraform in this directory.
-* [TLS Provider](https://registry.terraform.io/providers/hashicorp/tls/) for Terraform. Testing has been done with version 4.0.5. The TLS provider will be downloaded automatically from the Terraform Registry when you initialize Terraform in this directory.
-* The [vpc](https://registry.terraform.io/modules/terraform-aws-modules/vpc/aws/latest) Terraform module. Testing has been done with version 5.4.0 of this module. This module will be downloaded automatically from the Terraform Registry when you initialize Terraform in this directory.
+* [Terraform](https://developer.hashicorp.com/terraform/install) CLI. Terraform version 1.8.4 was used in development, but other versions of Terraform may also work.
+* [AWS](https://aws.amazon.com) cloud credentials.
 
 ### Note
 Please note that we will be running Terraform locally, from the CLI, rather than in Terraform Cloud. The reason is that we generate a Certificate Authority and an ssh private key. The CA cert and ssh private key are rendered as local files that you will use for accessing the resources that are provisioned. These resources can be generated in Terraform Cloud, and you can retrieve them and render them locally, but the approach described above was adopted to minimize dependencies as you render your demo environment.
@@ -71,39 +67,39 @@ terraform apply    # Create / update infrastructure declared in the Terraform co
 ```
 $ terraform init
 
-Initializing the backend...
 Initializing modules...
-Downloading registry.terraform.io/terraform-aws-modules/vpc/aws 5.4.0 for vpc...
+Downloading registry.terraform.io/terraform-aws-modules/vpc/aws 5.8.1 for vpc...
 - vpc in .terraform/modules/vpc
 
 Initializing provider plugins...
 - Finding hashicorp/tls versions matching "~> 4.0"...
-- Finding latest version of hashicorp/local...
-- Finding hashicorp/aws versions matching ">= 5.0.0, ~> 5.0"...
-- Finding hashicorp/hcp versions matching "~> 0.79"...
-- Installing hashicorp/local v2.4.1...
-- Installed hashicorp/local v2.4.1 (signed by HashiCorp)
-- Installing hashicorp/aws v5.31.0...
-- Installed hashicorp/aws v5.31.0 (signed by HashiCorp)
-- Installing hashicorp/hcp v0.79.0...
-- Installed hashicorp/hcp v0.79.0 (signed by HashiCorp)
+- Finding hashicorp/local versions matching "~> 2.5"...
+- Finding hashicorp/random versions matching "~> 3.6"...
+- Finding hashicorp/aws versions matching "~> 5.0, >= 5.30.0"...
+- Finding hashicorp/hcp versions matching "~> 0.90"...
 - Installing hashicorp/tls v4.0.5...
 - Installed hashicorp/tls v4.0.5 (signed by HashiCorp)
+- Installing hashicorp/local v2.5.1...
+- Installed hashicorp/local v2.5.1 (signed by HashiCorp)
+- Installing hashicorp/random v3.6.2...
+- Installed hashicorp/random v3.6.2 (signed by HashiCorp)
+- Installing hashicorp/aws v5.50.0...
+- Installed hashicorp/aws v5.50.0 (signed by HashiCorp)
+- Installing hashicorp/hcp v0.90.0...
+- Installed hashicorp/hcp v0.90.0 (signed by HashiCorp)
 
 Terraform has created a lock file .terraform.lock.hcl to record the provider
 selections it made above. Include this file in your version control repository
 so that Terraform can guarantee to make the same selections by default when
 you run "terraform init" in the future.
 
-Terraform has been successfully initialized!
+HCP Terraform has been successfully initialized!
 
-You may now begin working with Terraform. Try running "terraform plan" to see
-any changes that are required for your infrastructure. All Terraform commands
-should now work.
+You may now begin working with HCP Terraform. Try running "terraform plan" to
+see any changes that are required for your infrastructure.
 
-If you ever set or change modules or backend configuration for Terraform,
-rerun this command to reinitialize your working directory. If you forget, other
-commands will detect it and remind you to do so if necessary.
+If you ever set or change modules or Terraform Settings, run "terraform init"
+again to reinitialize your working directory.
 ```
 </details>
 
@@ -586,21 +582,23 @@ z_info = "Your ssh key has been saved as ssh_key, with the corresponding public 
 
 When you provision the environment with Terraform, you'll be provided with the following outputs:
 * `a_hosts_file_entry`
-* `b_connection_strings`->`ssh`
-* `b_connection_strings`->`vault_url`
-* `b_connection_strings`->`web_url`
+* `b_connection_strings`->`a_ssh`
+* `b_connection_strings`->`b_vault_url`
+* `b_connection_strings`->`c_web_url`
+* `b_connection_strings`->`d_mongo_ui_url`
 
-Add the `a_hosts_file_entry` to your `/etc/hosts` file to resolve the `vault_url` and `web_url` on your machine.
+Add the `a_hosts_file_entry` to your `/etc/hosts` file to resolve `b_vault_url`, `c_web_url` and `d_mongo_ui_url` on your machine.
 
-Use the `b_connection_strings`->`ssh` output to connect to the provisioned instance.
+Use the `b_connection_strings`->`a_ssh` output to connect to the provisioned instance.
 
 #### Add the CA Cert to your trust store
-This is rendered as `ca.pem` in the `terraform` directory.
+This is rendered as `ca.pem` in the `terraform` directory. Add this to the trust store on your machine so that certificates minted by it are trusted by your system.
 
 #### Interact with the target environment in your browser using:
 
-* `b_connection_strings`->`vault_url`
-* `b_connection_strings`->`web_url`
+* `b_connection_strings`->`b_vault_url`
+* `b_connection_strings`->`c_web_url`
+* `b_connection_strings`->`d_mongo_ui_url`
 
 You may log into the Vault cluster using LDAP authentication. Use the admin user to login. By default, the username and password for the admin user is `yash`.
 
@@ -613,18 +611,19 @@ ssh -i ./ssh_key ubuntu@<target instance>
 # become root using sudo
 sudo su - 
 
-# examine the cloud-init output log
+# examine the cloud-init output log as the userdata script is being run
 tail -f /var/log/cloud-init-output.log
 
-# examine docker containers (there should be 6):
+# examine docker containers:
+docker ps -a
+
+# (there should be 6 once the userdata script finishes running):
 #   mongodb
 #   mongo-gui
 #   mysql
 #   openldap
 #   vault
 #   web 
-
-docker ps -a
 
 # examine docker logs
 cd /data/docker-demo-stack && docker-compose logs -f
@@ -650,6 +649,19 @@ vault read mongodb-demo/creds/mysql-web-role
 
 # Validate LDAP auth
 vault login -method=ldap username=john password=john
+```
+#### Destroying or replacing the AWS instance
+
+If you want to leave most of the resources related to this demo environment running, but tear down the AWS instance when it isn't needed to minimize your cloud spend, you can simply destroy the AWS instance.
+
+```
+terraform destroy -target=aws_instance.instance
+```
+
+Similarly, if you need to replace the AWS instance, you may run:
+
+```
+terraform apply -replace=aws_instance.instance
 ```
 
 More to come here soon.
