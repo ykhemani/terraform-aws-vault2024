@@ -169,7 +169,7 @@ cluster_addr = "https://vault.$DOMAIN:8201"
 cluster_name = "vault"
 
 seal "awskms" {
-  kms_key_id = $KMS_KEY_ID
+  kms_key_id = "$KMS_KEY_ID"
 }
 
 EOF
