@@ -288,7 +288,7 @@ data "aws_iam_policy_document" "iam-policy-document" {
       "kms:Encrypt",
       "kms:Decrypt",
       "kms:DescribeKey",
-      ":GenerateRandom"
+      "kms:GenerateRandom"
     ]
   }
 }
