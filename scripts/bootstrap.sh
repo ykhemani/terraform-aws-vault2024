@@ -498,11 +498,21 @@ cd /data/docker-demo-stack && \
 
 if [ $STOP_AFTER_STARTING_VAULT == "1" ]
 then
+  _info "docker ps:"
+  docker ps
+
+  _info "docker logs vault"
+  docker logs vault
+
+  _info "Vault Status"
+  curl -sk $VAULT_ADDR/v1/sys/health | jq
+
+  _info "Exiting bootstrap."
   exit 0
 fi
 
-_info "Sleep 10"
-sleep 10
+_info "Sleep 15"
+sleep 15
 
 _info "Initialize Vault"
 vault operator init \
