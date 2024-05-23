@@ -185,7 +185,6 @@ cat <<EOF > ~/venv/venv
 export VAULT_ADDR=https://vault.$DOMAIN:8200
 export VAULT_SKIP_VERIFY=true
 export VAULT_TOKEN=\$(cat ~/venv/vault-init.json | jq -r .root_token)
-export VAULT_UNSEAL=\$(cat ~/venv/vault-init.json | jq -r .unseal_keys_b64[])
 
 export DOMAIN=$DOMAIN
 
@@ -503,15 +502,16 @@ sleep 10
 _info "Initialize Vault"
 vault operator init \
   -format=json \
-  -key-shares=1 \
-  -key-threshold=1 \
+  -recovery-shares=1 \
+  -recovery-threshold=1 \
   | tee ~/venv/vault-init.json
 
 _info "Source ~/venv/venv"
 . ~/venv/venv
 
-_info "Unseal Vault"
-vault operator unseal $VAULT_UNSEAL
+# not needed for kms seal
+# _info "Unseal Vault"
+# vault operator unseal $VAULT_UNSEAL
 
 # Audit Logs
 _info "Configure Vault audit logs"
