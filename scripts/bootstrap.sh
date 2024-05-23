@@ -167,6 +167,11 @@ api_addr     = "https://vault.$DOMAIN:8200"
 cluster_addr = "https://vault.$DOMAIN:8201"
 
 cluster_name = "vault"
+
+seal "awskms" {
+  kms_key_id = $kms_key_id
+}
+
 EOF
 
 _info "Setting owner/group for /data/vault"
@@ -289,7 +294,7 @@ services:
   vault:
     container_name: vault
     hostname: vault.$DOMAIN
-    image: hashicorp/vault-enterprise:1.15.4-ent
+    image: hashicorp/vault-enterprise:1.16.2-ent
     restart: unless-stopped
     ports:
       - 8200:8200
@@ -395,6 +400,7 @@ services:
       - VAULT_ADDR=https://vault.$DOMAIN:8200
       - WEB_SERVER_URL=https://web.$VAULT_CERT_DOMAIN/
       - MONGO_GUI_URL=https://mongo-ui.$DOMAIN:$MONGO_GUI_PORT
+      - GITREPO=$GITREPO
     secrets:
       - web_pki_privkey
       - web_pki_cert
