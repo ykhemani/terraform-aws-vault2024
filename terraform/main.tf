@@ -16,16 +16,11 @@ locals {
 }
 
 # HCP Packer Image
-data "hcp_packer_iteration" "iteration" {
-  bucket_name = var.hcp_packer_image_bucket_name
-  channel     = var.hcp_packer_image_channel
-}
-
-data "hcp_packer_image" "image" {
-  bucket_name    = var.hcp_packer_image_bucket_name
-  cloud_provider = "aws"
-  iteration_id   = data.hcp_packer_iteration.iteration.ulid
-  region         = var.region
+data "hcp_packer_artifact" "image" {
+  bucket_name  = var.hcp_packer_image_bucket_name
+  channel_name = var.hcp_packer_image_channel
+  platform     = "aws"
+  region       = var.region
 }
 
 # Certificate Authority
@@ -128,7 +123,7 @@ data "aws_availability_zones" "available" {
 
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
-  version = "5.4.0"
+  version = "5.8.1"
 
   name = "${var.prefix}-vpc"
   cidr = var.vpc_cidr
@@ -199,6 +194,122 @@ resource "aws_network_interface" "nic" {
   )
 }
 
+# bootstrap secrets
+resource "aws_secretsmanager_secret" "bootstrap-secrets" {
+  name = "${var.prefix}-bootstrap-secrets-${random_string.suffix.result}"
+
+  tags = local.tags
+}
+
+resource "aws_secretsmanager_secret_version" "bootstrap-secrets" {
+  secret_id = aws_secretsmanager_secret.bootstrap-secrets.id
+  secret_string = jsonencode(
+    {
+      domain                = var.domain,
+      vault_license         = var.vault_license,
+      ldap_users            = var.ldap_users,
+      ldap_user_vault_admin = var.ldap_user_vault_admin,
+      cert_dir              = var.cert_dir,
+      ca_cert               = tls_self_signed_cert.ca-cert.cert_pem,
+      wildcard_private_key  = tls_private_key.wildcard_private_key.private_key_pem,
+      wildcard_cert         = tls_locally_signed_cert.wildcard_cert.cert_pem,
+      ssh_import_id         = var.ssh_import_id,
+      gitrepo               = var.gitrepo,
+      repodir               = var.repodir,
+    }
+  )
+}
+
+data "aws_region" "current" {}
+
+resource "aws_iam_role_policy" "iam-policy" {
+  name   = "${var.prefix}-iam-role-policy-${data.aws_region.current.name}"
+  role   = aws_iam_role.instance_role.id
+  policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Action": [
+        "secretsmanager:GetSecretValue"
+      ],
+      "Effect": "Allow",
+      "Resource": "${aws_secretsmanager_secret.bootstrap-secrets.arn}"
+    }
+  ]
+}
+EOF
+}
+
+# KMS
+resource "aws_kms_key" "vault" {
+  description             = "KMS key for ${var.prefix} Vault cluster"
+  enable_key_rotation     = var.vault_kms_key_rotate
+  deletion_window_in_days = var.vault_kms_key_deletion_days
+
+  tags = {
+    Name = "${var.prefix}-vault-kms-key-${random_string.suffix.result}"
+  }
+}
+
+resource "random_string" "suffix" {
+  length  = 4
+  special = false
+}
+
+# IAM
+data "aws_iam_policy_document" "assume_role" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["ec2.amazonaws.com"]
+    }
+  }
+}
+
+data "aws_iam_policy_document" "iam-policy-document" {
+  statement {
+    sid       = "VaultGetSecrets"
+    effect    = "Allow"
+    resources = [aws_secretsmanager_secret.bootstrap-secrets.arn]
+    actions = [
+      "secretsmanager:GetSecretValue",
+    ]
+  }
+
+  statement {
+    sid       = "VaultKMSUnseal"
+    effect    = "Allow"
+    resources = [aws_kms_key.vault.arn]
+    actions = [
+      "kms:Encrypt",
+      "kms:Decrypt",
+      "kms:DescribeKey",
+      ":GenerateRandom"
+    ]
+  }
+}
+
+resource "aws_iam_role" "instance_role" {
+  name               = "${var.prefix}-iam-role-${data.aws_region.current.name}"
+  assume_role_policy = data.aws_iam_policy_document.assume_role.json
+}
+
+resource "aws_iam_role_policy" "vault-demo-iam-role-policy" {
+  name   = "${var.prefix}-iam-role-policy"
+  role   = aws_iam_role.instance_role.id
+  policy = data.aws_iam_policy_document.iam-policy-document.json
+}
+
+resource "aws_iam_instance_profile" "instance_profile" {
+  name = "${var.prefix}-instance-profile-${data.aws_region.current.name}"
+  role = aws_iam_role.instance_role.name
+}
+
+
 resource "aws_eip" "eip" {
   network_interface = aws_network_interface.nic.id
 }
@@ -219,10 +330,10 @@ resource "aws_instance" "instance" {
   }
 
   # ami                  = "ami-0d617e077b72bc526"
-  ami = data.hcp_packer_image.image.cloud_image_id # hcp packer image
+  ami = data.hcp_packer_artifact.image.external_identifier # hcp packer image
   # ami                  = local.ami_id
   instance_type        = var.instance_type
-  iam_instance_profile = var.iam_instance_profile
+  iam_instance_profile = aws_iam_instance_profile.instance_profile.name
   key_name             = aws_key_pair.ssh.key_name
   root_block_device {
     volume_type = var.root_volume_type
@@ -230,17 +341,12 @@ resource "aws_instance" "instance" {
   }
 
   user_data_base64 = base64gzip(templatefile("${path.module}/templates/${var.userdata_templatefile}", {
-    domain                = var.domain,
-    vault_license         = var.vault_license,
-    ldap_users            = var.ldap_users,
-    ldap_user_vault_admin = var.ldap_user_vault_admin,
-    cert_dir              = var.cert_dir,
-    ca_cert               = tls_self_signed_cert.ca-cert.cert_pem,
-    wildcard_private_key  = tls_private_key.wildcard_private_key.private_key_pem,
-    wildcard_cert         = tls_locally_signed_cert.wildcard_cert.cert_pem,
-    ssh_import_id         = var.ssh_import_id,
-    gitrepo               = var.gitrepo,
-    repodir               = var.repodir,
+    secret_arn = aws_secretsmanager_secret.bootstrap-secrets.arn,
+    kms_key_id = aws_kms_key.vault.key_id,
+    region     = data.aws_region.current.name,
+    gitrepo    = var.gitrepo,
+    repodir    = var.repodir,
+
   }))
 
   tags = merge(
