@@ -87,12 +87,6 @@ variable "instance_security_group_ids" {
   default     = []
 }
 
-variable "iam_instance_profile" {
-  type        = string
-  description = "IAM instance profile."
-  default     = null
-}
-
 variable "userdata_templatefile" {
   type        = string
   description = "Name of userdata template file."
@@ -109,6 +103,19 @@ variable "repodir" {
   type        = string
   description = "Name of directory into which to clone the gitrepo (under the /data directory.)"
   default     = "vault-demo-rig"
+}
+
+# KMS
+variable "vault_kms_key_rotate" {
+  type        = bool
+  description = "Whether to rotate Vault KMS key."
+  default     = false
+}
+
+variable "vault_kms_key_deletion_days" {
+  type        = number
+  description = "Number of days to wait before deleting Vault KMS key."
+  default     = 7
 }
 
 #-------------------------------------------------------------------------
