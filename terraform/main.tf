@@ -341,11 +341,12 @@ resource "aws_instance" "instance" {
   }
 
   user_data_base64 = base64gzip(templatefile("${path.module}/templates/${var.userdata_templatefile}", {
-    secret_arn = aws_secretsmanager_secret.bootstrap-secrets.arn,
-    kms_key_id = aws_kms_key.vault.key_id,
-    region     = data.aws_region.current.name,
-    gitrepo    = var.gitrepo,
-    repodir    = var.repodir,
+    secret_arn                = aws_secretsmanager_secret.bootstrap-secrets.arn,
+    kms_key_id                = aws_kms_key.vault.key_id,
+    region                    = data.aws_region.current.name,
+    gitrepo                   = var.gitrepo,
+    repodir                   = var.repodir,
+    stop_after_starting_vault = var.stop_after_starting_vault
 
   }))
 

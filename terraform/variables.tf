@@ -235,5 +235,10 @@ variable "ldap_user_vault_admin" {
   type        = string
   description = "LDAP user to be assigned vault admin policy."
   default     = "yash"
+}
 
+variable "stop_after_starting_vault" {
+  type        = bool
+  description = "Whether to stop bootstrap after starting vault."
+  default     = false
 }
