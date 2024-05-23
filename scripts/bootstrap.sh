@@ -496,6 +496,11 @@ _info "Starting Vault"
 cd /data/docker-demo-stack && \
   docker-compose up -d vault
 
+if [ $STOP_AFTER_STARTING_VAULT == "1" ]
+then
+  exit 0
+fi
+
 _info "Sleep 10"
 sleep 10
 
