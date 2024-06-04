@@ -1008,6 +1008,10 @@ _info "LDAP_MOUNT_ACCESSOR is $LDAP_MOUNT_ACCESSOR"
 
 for i in ${LDAP_USERS//,/ }
 do
+  _info "Create user $i in ldap auth method"
+  vault write auth/$LDAP_AUTH_PATH/users/$i \
+    policies=$i
+
   _info "Generate vault entity for $i"
   VAULT_ENTITY_ID=$(vault write -format=json identity/entity name="$i" policies="$i" | jq -r ".data.id")
 
@@ -1107,6 +1111,10 @@ do
     
     for i in ${LDAP_USERS//,/ }
     do
+      _info "Create user $i in ldap auth method in namespace $n"
+      VAULT_NAMESPACE=$n vault write auth/$LDAP_AUTH_PATH/users/$i \
+        policies=$i
+
       _info "Generate vault entity for $i in namespace $n"
       VAULT_ENTITY_ID=$(VAULT_NAMESPACE=$n vault write -format=json identity/entity name="$i" policies="$n-$i" | jq -r ".data.id")
     
