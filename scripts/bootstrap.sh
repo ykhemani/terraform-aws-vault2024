@@ -513,8 +513,11 @@ then
   exit 0
 fi
 
-_info "Sleep 15"
-sleep 15
+_info "Sleep 30"
+sleep 30
+
+_info "Vault Status"
+curl -sk $VAULT_ADDR/v1/sys/health | jq
 
 _info "Initialize Vault"
 vault operator init \
@@ -1112,16 +1115,17 @@ do
     
       _info "Create policy for $i in namespace $n"
       VAULT_NAMESPACE=$n vault policy write $i - <<EOF
-    # grant permissions to user kv secrets
-    path "$KV_PATH/metadata/$i" {
-      capabilities = ["list"]
-    }
-    
-    path "$KV_PATH/data/$i/*" {
-      capabilities = ["read", "list", "update", "create"]
-    }
-    EOF
-      #vault write auth/$LDAP_AUTH_PATH/users/$i policies=$i
+# grant permissions to user kv secrets
+path "$KV_PATH/metadata/$i" {
+  capabilities = ["list"]
+}
+
+path "$KV_PATH/data/$i/*" {
+  capabilities = ["read", "list", "update", "create"]
+}
+EOF
+
+      #VAULT_NAMESPACE=$n vault write auth/$LDAP_AUTH_PATH/users/$i policies=$i
     
       _info "Logging into vault via ldap auth as $i in namespace $n"
       VAULT_TOKEN=$(VAULT_NAMESPACE=$n vault login -format=json -method=ldap username=$i password=$i | jq -r .auth.client_token) VAULT_NAMESPACE=$n vault kv list -format=json kv/$i > /dev/null
