@@ -1124,16 +1124,16 @@ do
         mount_accessor=$USERPASS_MOUNT_ACCESSOR
     
       _info "Write test kv secret for user $i in namespace $n"
-      VAULT_NAMESPACE=$n vault kv put $KV_PATH/$i/test x=$(uuidgen) y=$(uuidgen)
+      VAULT_NAMESPACE=$n vault kv put $KV_PATH/$n-$i/test x=$(uuidgen) y=$(uuidgen)
     
       _info "Create policy for $n-$i in namespace $n"
       VAULT_NAMESPACE=$n vault policy write $n-$i - <<EOF
 # grant permissions to user kv secrets
-path "$KV_PATH/metadata/$i" {
+path "$KV_PATH/metadata/$n-$i" {
   capabilities = ["list"]
 }
 
-path "$KV_PATH/data/$i/*" {
+path "$KV_PATH/data/$n-$i/*" {
   capabilities = ["read", "list", "update", "create"]
 }
 EOF
@@ -1141,10 +1141,10 @@ EOF
       #VAULT_NAMESPACE=$n vault write auth/$LDAP_AUTH_PATH/users/$i policies=$i
     
       _info "Logging into vault via ldap auth as $i in namespace $n"
-      VAULT_TOKEN=$(VAULT_NAMESPACE=$n vault login -format=json -method=ldap username=$i password=$i | jq -r .auth.client_token) VAULT_NAMESPACE=$n vault kv list -format=json kv/$i > /dev/null
+      VAULT_TOKEN=$(VAULT_NAMESPACE=$n vault login -format=json -method=ldap username=$i password=$i | jq -r .auth.client_token) VAULT_NAMESPACE=$n vault kv list -format=json kv/$n-$i > /dev/null
     
       _info "Logging into vault via userpass auth as $i in namespace $n"
-      VAULT_TOKEN=$(VAULT_NAMESPACE=$n vault login -format=json -method=userpass username=$i password=$i | jq -r .auth.client_token) VAULT_NAMESPACE=$n vault kv list -format=json kv/$i > /dev/null
+      VAULT_TOKEN=$(VAULT_NAMESPACE=$n vault login -format=json -method=userpass username=$i password=$i | jq -r .auth.client_token) VAULT_NAMESPACE=$n vault kv list -format=json kv/$n-$i > /dev/null
     done
     
     _info "Cleaning up ~/.vault-token"
