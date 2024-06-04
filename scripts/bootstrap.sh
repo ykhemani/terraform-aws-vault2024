@@ -1095,10 +1095,10 @@ do
     for i in ${LDAP_USERS//,/ }
     do
       _info "Generate vault entity for $i in namespace $n"
-      VAULT_ENTITY_ID=$(VAULT_NAMESPACE=$n vault write -format=json identity/entity name="$i" policies="$i" | jq -r ".data.id")
+      VAULT_ENTITY_ID=$(VAULT_NAMESPACE=$n vault write -format=json identity/entity name="$i" policies="$n-$i" | jq -r ".data.id")
     
       _info "Generate userpass user $i in namespace $n"
-      VAULT_NAMESPACE=$n vault write auth/$USERPASS_AUTH_PATH/users/$i password=$i policies=$i
+      VAULT_NAMESPACE=$n vault write auth/$USERPASS_AUTH_PATH/users/$i password=$i policies=$n-$i
     
       _info "Map ldap alias $i to entity $i in namespace $n"
       VAULT_NAMESPACE=$n vault write identity/entity-alias name="$i" \
@@ -1113,8 +1113,8 @@ do
       _info "Write test kv secret for user $i in namespace $n"
       VAULT_NAMESPACE=$n vault kv put $KV_PATH/$i/test x=$(uuidgen) y=$(uuidgen)
     
-      _info "Create policy for $i in namespace $n"
-      VAULT_NAMESPACE=$n vault policy write $i - <<EOF
+      _info "Create policy for $n-$i in namespace $n"
+      VAULT_NAMESPACE=$n vault policy write $n-$i - <<EOF
 # grant permissions to user kv secrets
 path "$KV_PATH/metadata/$i" {
   capabilities = ["list"]
