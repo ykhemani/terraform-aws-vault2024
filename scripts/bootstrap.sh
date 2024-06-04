@@ -1159,6 +1159,44 @@ EOF
     rm -f ~/.vault-token
 done
 
+# generate some non-entity clients
+for i in $(seq 1 $(shuf -i 10-25 -n 1))
+do
+  vault kv put $KV_PATH/rogue$i/rogue$i $(uuidgen)=$(uuidgen)
+  vault policy write rogue$i -<<EOF
+path "$KV_PATH/data/rogue$i/*" {
+  capabilities = ["read", "list", "update", "create"]
+}
+
+path "$KV_PATH/delete/rogue$i/*" {
+  capabilities = ["update"]
+}
+
+path "$KV_PATH/undelete/rogue$i/*" {
+  capabilities = ["update"]
+}
+
+path "$KV_PATH/destroy/rogue$i/*" {
+  capabilities = ["update"]
+}
+
+path "$KV_PATH/metadata/rogue$i/*" {
+  capabilities = ["list"]
+}
+
+path "$KV_PATH/metadata/rogue$i/*" {
+  capabilities = ["read"]
+}
+
+path "$KV_PATH/metadata/rogue$i/*" {
+  capabilities = ["delete"]
+}
+EOF
+
+  VAULT_TOKEN=$(vault token create -policy=rogue$i -format=json | jq -r .auth.client_token) vault kv get kv/rogue$i/rogue$i
+done
+
+
 
 # Vault Agent
 _info "Configuring Vault Agent"
