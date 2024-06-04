@@ -1071,8 +1071,12 @@ do
   vault kv put $KV_PATH/engineering/$n-app1 user=$(uuidgen) pass=$(uuidgen)
 
   _info "Enable vault ldap auth in namespace $n"
-  VAULT_NAMESPACE=$i vault auth disable $LDAP_AUTH_PATH
-  VAULT_NAMESPACE=$n vault auth enable $LDAP_AUTH_PATH
+  VAULT_NAMESPACE=$n vault auth disable $LDAP_AUTH_PATH
+  VAULT_NAMESPACE=$n vault auth enable -path=$LDAP_AUTH_PATH ldap
+
+  _info "Enable vault userpass auth in namespace $n"
+  VAULT_NAMESPACE=$n vault auth disable $USERPASS_AUTH_PATH
+  VAULT_NAMESPACE=$n vault auth enable -path=$USERPASS_AUTH_PATH userpass
   
   _info "Configure vault ldap auth in namespace $n"
   VAULT_NAMESPACE=$n vault write auth/$LDAP_AUTH_PATH/config \
