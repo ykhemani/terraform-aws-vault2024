@@ -1064,11 +1064,11 @@ do
 
   # KV
   _info "Enable KV secrets engine in namespace $n"
-  vault secrets disable $KV_PATH
-  vault secrets enable -path $KV_PATH kv-v2
+  VAULT_NAMESPACE=$n vault secrets disable $KV_PATH
+  VAULT_NAMESPACE=$n vault secrets enable -path $KV_PATH kv-v2
   
   _info "Write kv secret to $KV_PATH/engineering/app1"
-  vault kv put $KV_PATH/engineering/$n-app1 user=$(uuidgen) pass=$(uuidgen)
+  VAULT_NAMESPACE=$n vault kv put $KV_PATH/engineering/$n-app1 user=$(uuidgen) pass=$(uuidgen)
 
   _info "Enable vault ldap auth in namespace $n"
   VAULT_NAMESPACE=$n vault auth disable $LDAP_AUTH_PATH
