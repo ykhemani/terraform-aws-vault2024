@@ -1061,11 +1061,20 @@ vault write auth/$USERPASS_AUTH_PATH/users/$LDAP_USER_VAULT_ADMIN \
 # LDAP auth in each namespace
 for n in ${NAMESPACES//,/ }
 do
-  #_info "Enable vault ldap auth in namespace $i"
-  #VAULT_NAMESPACE=$i vault auth disable $LDAP_AUTH_PATH
+
+  # KV
+  _info "Enable KV secrets engine in namespace $n"
+  vault secrets disable $KV_PATH
+  vault secrets enable -path $KV_PATH kv-v2
+  
+  _info "Write kv secret to $KV_PATH/engineering/app1"
+  vault kv put $KV_PATH/engineering/$n-app1 user=$(uuidgen) pass=$(uuidgen)
+
+  _info "Enable vault ldap auth in namespace $n"
+  VAULT_NAMESPACE=$i vault auth disable $LDAP_AUTH_PATH
   VAULT_NAMESPACE=$n vault auth enable $LDAP_AUTH_PATH
   
-  #_info "Configure vault ldap auth in namespace $i"
+  _info "Configure vault ldap auth in namespace $n"
   VAULT_NAMESPACE=$n vault write auth/$LDAP_AUTH_PATH/config \
     binddn="cn=admin,dc=example,dc=com" \
     bindpass='password' \
