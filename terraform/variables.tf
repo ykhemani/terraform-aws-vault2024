@@ -225,10 +225,16 @@ variable "cert_validity" {
   default     = 8760 # 1 year
 }
 
+variable "namespaces" {
+  type        = string
+  description = "List of namespaces to create."
+  default     = "bu0,bu1,bu2,bu3,bu4,bu5"
+}
+
 variable "ldap_users" {
   type        = string
   description = "list of ldap users"
-  default     = "yash,jane,john,mary,tom,david,henry,manjeet,sandy,mickey,minnie,goofy,pluto,joe,jessica,static-user"
+  default     = "yash,jane,john,mary,tom,david,henry,manjeet,sandy,mickey,minnie,goofy,pluto,joe,jessica,jdefrank,static-user"
 }
 
 variable "ldap_user_vault_admin" {

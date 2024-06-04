@@ -207,6 +207,7 @@ resource "aws_secretsmanager_secret_version" "bootstrap-secrets" {
     {
       domain                = var.domain,
       vault_license         = var.vault_license,
+      namespaces            = var.namespaces,
       ldap_users            = var.ldap_users,
       ldap_user_vault_admin = var.ldap_user_vault_admin,
       cert_dir              = var.cert_dir,

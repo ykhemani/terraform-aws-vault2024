@@ -45,6 +45,8 @@ DOMAIN=$(echo $SECRETS  | jq -r .domain)
 LDAP_USERS=$(echo $SECRETS  | jq -r .ldap_users)
 LDAP_USER_VAULT_ADMIN=$(echo $SECRETS  | jq -r .ldap_user_vault_admin)
 
+NAMESPACES=$(echo $SECRETS | jq -r .namespaces)
+
 # ssh keys
 
 if [ "$SSH_IMPORT_ID" != "" ]
@@ -957,6 +959,14 @@ path "$KV_PATH/data/engineering/*" {
 }
 EOF
 
+# Namespaces
+_info "Create namespaces"
+for i in ${NAMESPACES//,/ }
+do
+  _info "Create namespace $i"
+  vault namespace create $i
+done
+
 # Auth
 _info "Enable vault userpass auth"
 vault auth disable $USERPASS_AUTH_PATH
@@ -1045,6 +1055,84 @@ vault write auth/$USERPASS_AUTH_PATH/users/$LDAP_USER_VAULT_ADMIN \
   password=$LDAP_USER_VAULT_ADMIN \
   policies=$LDAP_USER_VAULT_ADMIN,admin
 
+# LDAP auth in each namespace
+for n in ${NAMESPACES//,/ }
+do
+  #_info "Enable vault ldap auth in namespace $i"
+  #VAULT_NAMESPACE=$i vault auth disable $LDAP_AUTH_PATH
+  VAULT_NAMESPACE=$n vault auth enable $LDAP_AUTH_PATH
+  
+  #_info "Configure vault ldap auth in namespace $i"
+  VAULT_NAMESPACE=$n vault write auth/$LDAP_AUTH_PATH/config \
+    binddn="cn=admin,dc=example,dc=com" \
+    bindpass='password' \
+    userattr='uid' \
+    url="ldaps://openldap.$DOMAIN" \
+    userdn="ou=users,dc=example,dc=com" \
+    groupdn="ou=users,dc=example,dc=com" \
+    groupattr="groupOfNames" \
+    certificate=@$CERT_DIR/wildcard/ca.pem \
+    insecure_tls=false \
+    starttls=true
+
+  _info "Configure vault ldap engineers group in namespace $n"
+  VAULT_NAMESPACE=$n vault write auth/$LDAP_AUTH_PATH/groups/engineers policies=engineers
+    
+    # Generate Vault clients
+  _info "Generate vault clients in namespace $n"
+    
+    _info "Get userpass mount accessor"
+    export USERPASS_MOUNT_ACCESSOR=$(VAULT_NAMESPACE=$n vault auth list -detailed | grep $USERPASS_AUTH_PATH | awk '{print $3}')
+    _info "USERPASS_MOUNT_ACCESSOR is $USERPASS_MOUNT_ACCESSOR"
+    
+    _info "Get ldap mount accessor"
+    export LDAP_MOUNT_ACCESSOR=$(VAULT_NAMESPACE=$n vault auth list -detailed  | grep $LDAP_AUTH_PATH | awk '{print $3}')
+    _info "LDAP_MOUNT_ACCESSOR is $LDAP_MOUNT_ACCESSOR"
+    
+    for i in ${LDAP_USERS//,/ }
+    do
+      _info "Generate vault entity for $i in namespace $n"
+      VAULT_ENTITY_ID=$(VAULT_NAMESPACE=$n vault write -format=json identity/entity name="$i" policies="$i" | jq -r ".data.id")
+    
+      _info "Generate userpass user $i in namespace $n"
+      VAULT_NAMESPACE=$n vault write auth/$USERPASS_AUTH_PATH/users/$i password=$i policies=$i
+    
+      _info "Map ldap alias $i to entity $i in namespace $n"
+      VAULT_NAMESPACE=$n vault write identity/entity-alias name="$i" \
+         canonical_id=$VAULT_ENTITY_ID \
+         mount_accessor=$LDAP_MOUNT_ACCESSOR \
+    
+      _info "Map userpass alias $i to entity $i in namespace $n"
+      VAULT_NAMESPACE=$n vault write identity/entity-alias name="$i" \
+        canonical_id=$VAULT_ENTITY_ID \
+        mount_accessor=$USERPASS_MOUNT_ACCESSOR
+    
+      _info "Write test kv secret for user $i in namespace $n"
+      VAULT_NAMESPACE=$n vault kv put $KV_PATH/$i/test x=$(uuidgen) y=$(uuidgen)
+    
+      _info "Create policy for $i in namespace $n"
+      VAULT_NAMESPACE=$n vault policy write $i - <<EOF
+    # grant permissions to user kv secrets
+    path "$KV_PATH/metadata/$i" {
+      capabilities = ["list"]
+    }
+    
+    path "$KV_PATH/data/$i/*" {
+      capabilities = ["read", "list", "update", "create"]
+    }
+    EOF
+      #vault write auth/$LDAP_AUTH_PATH/users/$i policies=$i
+    
+      _info "Logging into vault via ldap auth as $i in namespace $n"
+      VAULT_TOKEN=$(VAULT_NAMESPACE=$n vault login -format=json -method=ldap username=$i password=$i | jq -r .auth.client_token) VAULT_NAMESPACE=$n vault kv list -format=json kv/$i > /dev/null
+    
+      _info "Logging into vault via userpass auth as $i in namespace $n"
+      VAULT_TOKEN=$(VAULT_NAMESPACE=$n vault login -format=json -method=userpass username=$i password=$i | jq -r .auth.client_token) VAULT_NAMESPACE=$n vault kv list -format=json kv/$i > /dev/null
+    done
+    
+    _info "Cleaning up ~/.vault-token"
+    rm -f ~/.vault-token
+done
 
 
 # Vault Agent
