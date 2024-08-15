@@ -13,6 +13,8 @@ locals {
 
   private_subnets = [cidrsubnet(var.vpc_cidr, 8, 1)]
   public_subnets  = [cidrsubnet(var.vpc_cidr, 8, 101)]
+
+  ldap_users = join(",", concat([var.ldap_user_vault_admin], random_pet.ldap_users[*].id))
 }
 
 # HCP Packer Image
@@ -194,6 +196,12 @@ resource "aws_network_interface" "nic" {
   )
 }
 
+# ldap users
+resource "random_pet" "ldap_users" {
+  count  = var.ldap_user_count
+  length = 1
+}
+
 # bootstrap secrets
 resource "aws_secretsmanager_secret" "bootstrap-secrets" {
   name = "${var.prefix}-bootstrap-secrets-${random_string.suffix.result}"
@@ -208,7 +216,7 @@ resource "aws_secretsmanager_secret_version" "bootstrap-secrets" {
       domain                = var.domain,
       vault_license         = var.vault_license,
       namespaces            = var.namespaces,
-      ldap_users            = var.ldap_users,
+      ldap_users            = local.ldap_users
       ldap_user_vault_admin = var.ldap_user_vault_admin,
       cert_dir              = var.cert_dir,
       ca_cert               = tls_self_signed_cert.ca-cert.cert_pem,

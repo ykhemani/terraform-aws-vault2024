@@ -11,12 +11,16 @@ output "b_connection_strings" {
   }
 }
 
-output "e_private_ip" {
+output "c_private_ip" {
   value = aws_instance.instance.private_ip
 }
 
 output "d_public_ip" {
   value = aws_instance.instance.public_ip
+}
+
+output "e_ldap_users" {
+  value = local.ldap_users
 }
 
 output "z_info" {

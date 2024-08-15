@@ -231,10 +231,10 @@ variable "namespaces" {
   default     = "bu0,bu1,bu2,bu3,bu4,bu5"
 }
 
-variable "ldap_users" {
-  type        = string
-  description = "list of ldap users"
-  default     = "yash,jane,john,mary,tom,david,henry,manjeet,sandy,mickey,minnie,goofy,pluto,joe,jessica,jdefrank,static-user"
+variable "ldap_user_count" {
+  type        = number
+  description = "Number of LDAP users to create."
+  default     = 20
 }
 
 variable "ldap_user_vault_admin" {
