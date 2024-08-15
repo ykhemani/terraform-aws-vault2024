@@ -70,7 +70,7 @@ complete -C /usr/bin/packer packer
 EOF
 
 # CoreDNS
-_info "Download coredns
+_info "Download coredns"
 cd /tmp && \
   wget https://github.com/coredns/coredns/releases/download/v1.11.3/coredns_1.11.3_linux_amd64.tgz && \
   tar xvfz coredns_1.11.3_linux_amd64.tgz && \
