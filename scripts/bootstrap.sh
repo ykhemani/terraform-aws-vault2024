@@ -70,6 +70,12 @@ complete -C /usr/bin/packer packer
 EOF
 
 # CoreDNS
+_info "Download coredns
+cd /tmp && \
+  wget https://github.com/coredns/coredns/releases/download/v1.11.3/coredns_1.11.3_linux_amd64.tgz && \
+  tar xvfz coredns_1.11.3_linux_amd64.tgz && \
+  mv coredns /usr/bin/coredns
+
 _info "Create directories for coredns"
 mkdir -p /etc/coredns /var/lib/coredns
 
@@ -109,7 +115,7 @@ AmbientCapabilities=CAP_NET_BIND_SERVICE
 NoNewPrivileges=true
 User=coredns
 WorkingDirectory=/var/lib/coredns
-ExecStart=/usr/local/bin/coredns -conf=/etc/coredns/Corefile
+ExecStart=/usr/bin/coredns -conf=/etc/coredns/Corefile
 ExecReload=/bin/kill -SIGUSR1 \$MAINPID
 Restart=on-failure
 StandardOutput=append:/var/log/coredns.log
@@ -164,6 +170,10 @@ EOF
 _info "Stop and disable systemd-resolved"
 systemctl stop systemd-resolved
 systemctl disable systemd-resolved
+
+_info "Replace resolv.conf"
+mv /etc/resolv.conf /etc/resolv.conf-
+echo "nameserver 127.0.0.1" > /etc/resolv.conf
 
 _info "Enable and start coredns"
 systemctl enable coredns.service
