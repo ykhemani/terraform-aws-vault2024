@@ -405,7 +405,7 @@ services:
   vault:
     container_name: vault
     hostname: vault.$DOMAIN
-    image: hashicorp/vault-enterprise:1.16.6-ent
+    image: hashicorp/vault-enterprise:1.16.7-ent
     restart: unless-stopped
     ports:
       - 8200:8200
