@@ -69,6 +69,106 @@ complete -C /usr/bin/nomad nomad
 complete -C /usr/bin/packer packer
 EOF
 
+# CoreDNS
+_info "Create directories for coredns"
+mkdir -p /etc/coredns /var/lib/coredns
+
+_info "Add user coredns"
+useradd coredns
+
+_info "Set ownership of /var/lib/coredns to user coredns"
+chown coredns:coredns /var/lib/coredns
+
+_info "Create /etc/coredns/Corefile"
+cat <<EOF > /etc/coredns/Corefile
+example.com:53 {
+  log
+  errors
+  file db.example.com
+}
+
+.:53 {
+  forward . 1.1.1.1 1.0.0.1
+  log
+}
+EOF
+
+_info "Create coredns systemd unit file"
+cat <<EOF > /etc/systemd/system/coredns.service
+[Unit]
+Description=CoreDNS DNS server
+Documentation=https://coredns.io
+After=network.target
+
+[Service]
+PermissionsStartOnly=true
+LimitNOFILE=1048576
+LimitNPROC=512
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+User=coredns
+WorkingDirectory=/var/lib/coredns
+ExecStart=/usr/local/bin/coredns -conf=/etc/coredns/Corefile
+ExecReload=/bin/kill -SIGUSR1 \$MAINPID
+Restart=on-failure
+StandardOutput=append:/var/log/coredns.log
+StandardError=append:/var/log/coredns.err.log
+
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+_info "Create Corefile"
+cat <<EOF > /etc/coredns/Corefile
+example.com:53 {
+  log
+  errors
+  file db.example.com
+}
+
+.:53 {
+  forward . 1.1.1.1 1.0.0.1
+  log
+}
+EOF
+
+_info "Create /var/lib/coredns/db.example.com"
+
+export PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+export SERIAL="$(date +%Y%m%d)01"
+
+cat <<EOF > /var/lib/coredns/db.example.com
+\$ORIGIN example.com.  ; designates the start of this zone file in the namespace
+\$TTL 1h               ; default expiration time
+@                 IN  SOA     ns.example.com. yash.example.com. (
+                                  $SERIAL     ; Serial
+                                  1h             ; Refresh
+                                  1h             ; Retry
+                                  1d             ; Expire
+                                  1h)            ; Minimum TTL
+@                 IN  A       $PUBLIC_IP
+@                 IN  NS      ns.example.com.
+ns                IN  CNAME   @
+vault             IN  CNAME   @
+mysql             IN  CNAME   @
+postgres          IN  CNAME   @
+mongodb           IN  CNAME   @
+mongo-ui          IN  CNAME   @
+ldap              IN  CNAME   @
+openldap          IN  CNAME   @
+web.demo          IN  CNAME   @
+EOF
+
+_info "Stop and disable systemd-resolved"
+systemctl stop systemd-resolved
+systemctl disable systemd-resolved
+
+_info "Enable and start coredns"
+systemctl enable coredns.service
+systemctl start coredns.service
+
 # PKI
 _info "Creating TLS certificate files"
 mkdir -p $CERT_DIR/wildcard

@@ -23,6 +23,14 @@ output "e_ldap_users" {
   value = local.ldap_users
 }
 
+output "f_macos_dns_setting" {
+  value = "networksetup -setdnsservers Wi-Fi ${aws_instance.instance.public_ip}"
+}
+
+output "g_macos_dns_setting_clear" {
+  value = "networksetup -setdnsservers Wi-Fi empty"
+}
+
 output "z_info" {
-  value = "Your ssh key has been saved as ssh_key, with the corresponding public key saved as ssh_key.pub. The CA cert has been saved as ca.pem. To use this demo environment, please add the hosts_file_entry output to your /etc/hosts file. Please add the CA Cert to your trust store. You may then connect to the ssh environment."
+  value = "Your ssh key has been saved as ssh_key, with the corresponding public key saved as ssh_key.pub. The CA cert has been saved as ca.pem. To use this demo environment, please either use the DNS server running on the instance or add the a_hosts_file_entry output to your /etc/hosts file. Please add the CA Cert to your trust store. You may then connect to the ssh environment."
 }
