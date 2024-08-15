@@ -586,8 +586,9 @@ When you provision the environment with Terraform, you'll be provided with the f
 * `b_connection_strings`->`b_vault_url`
 * `b_connection_strings`->`c_web_url`
 * `b_connection_strings`->`d_mongo_ui_url`
+* `f_macos_dns_setting`
 
-Add the `a_hosts_file_entry` to your `/etc/hosts` file to resolve `b_vault_url`, `c_web_url` and `d_mongo_ui_url` on your machine.
+Either use `f_macos_dns_setting` to use the demo environment's DNS server, or add the `a_hosts_file_entry` to your `/etc/hosts` file. This will allow you to resolve `b_vault_url`, `c_web_url` and `d_mongo_ui_url` on your machine.
 
 Use the `b_connection_strings`->`a_ssh` output to connect to the provisioned instance.
 
