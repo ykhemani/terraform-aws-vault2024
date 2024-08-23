@@ -254,6 +254,11 @@ then
   _error "DOMAIN is not set"
 fi
 
+if [ "$VAULT_CONTAINER_IMAGE" == "" ]
+then
+  _error "VAULT_CONTAINER_IMAGE is not set"
+fi
+
 _info "Writing Vault config to /data/vault/conf/vault.hcl"
 cat <<EOF > /data/vault/conf/vault.hcl
 # raft storage
@@ -405,7 +410,7 @@ services:
   vault:
     container_name: vault
     hostname: vault.$DOMAIN
-    image: hashicorp/vault-enterprise:1.16.7-ent
+    image: $VAULT_CONTAINER_IMAGE
     restart: unless-stopped
     ports:
       - 8200:8200
