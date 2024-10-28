@@ -69,6 +69,14 @@ complete -C /usr/bin/nomad nomad
 complete -C /usr/bin/packer packer
 EOF
 
+# supress warning in new version of Vault
+_info "set DBUS_SESSION_BUS_ADDRESS=/dev/null"
+cat <<EOF >> /root/.bashrc
+export DBUS_SESSION_BUS_ADDRESS=/dev/null
+EOF
+
+export DBUS_SESSION_BUS_ADDRESS=/dev/null
+
 # CoreDNS
 _info "Download coredns"
 cd /tmp && \
