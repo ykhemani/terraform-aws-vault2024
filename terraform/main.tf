@@ -15,6 +15,7 @@ locals {
   public_subnets  = [cidrsubnet(var.vpc_cidr, 8, 101)]
 
   ldap_users = join(",", concat([var.ldap_user_vault_admin], random_pet.ldap_users[*].id))
+  namespaces = join(",", random_pet.namespaces[*].id)
 }
 
 # HCP Packer Image
@@ -202,6 +203,12 @@ resource "random_pet" "ldap_users" {
   length = 1
 }
 
+# namespaces
+resource "random_pet" "namespaces" {
+  count  = var.namespace_count
+  length = 1
+}
+
 # bootstrap secrets
 resource "aws_secretsmanager_secret" "bootstrap-secrets" {
   name = "${var.prefix}-bootstrap-secrets-${random_string.suffix.result}"
@@ -215,7 +222,7 @@ resource "aws_secretsmanager_secret_version" "bootstrap-secrets" {
     {
       domain                = var.domain,
       vault_license         = var.vault_license,
-      namespaces            = var.namespaces,
+      namespaces            = local.namespaces,
       ldap_users            = local.ldap_users
       ldap_user_vault_admin = var.ldap_user_vault_admin,
       cert_dir              = var.cert_dir,
@@ -350,13 +357,15 @@ resource "aws_instance" "instance" {
   }
 
   user_data_base64 = base64gzip(templatefile("${path.module}/templates/${var.userdata_templatefile}", {
-    secret_arn                = aws_secretsmanager_secret.bootstrap-secrets.arn,
-    kms_key_id                = aws_kms_key.vault.key_id,
-    region                    = data.aws_region.current.name,
-    gitrepo                   = var.gitrepo,
-    repodir                   = var.repodir,
-    stop_after_starting_vault = var.stop_after_starting_vault
-
+    secret_arn                   = aws_secretsmanager_secret.bootstrap-secrets.arn,
+    kms_key_id                   = aws_kms_key.vault.key_id,
+    region                       = data.aws_region.current.name,
+    gitrepo                      = var.gitrepo,
+    repodir                      = var.repodir,
+    stop_after_starting_vault    = var.stop_after_starting_vault
+    vault_container_image        = var.vault_container_image
+    vault_transform_fpe          = var.vault_transform_fpe
+    vault_transform_tokenization = var.vault_transform_tokenization
   }))
 
   tags = merge(

@@ -72,7 +72,7 @@ variable "instance_type" {
 variable "root_volume_type" {
   type        = string
   description = "Root volume type."
-  default     = "gp2"
+  default     = "gp3"
 }
 
 variable "root_volume_size" {
@@ -121,6 +121,24 @@ variable "vault_kms_key_deletion_days" {
 #-------------------------------------------------------------------------
 # Vault
 #-------------------------------------------------------------------------
+
+variable "vault_container_image" {
+  type        = string
+  description = "Vault container image."
+  default     = "hashicorp/vault-enterprise:1.16.7-ent"
+}
+
+variable "vault_transform_fpe" {
+  type        = bool
+  description = "Whether to configure the Transform secret engine format preserving encryption (FPE) demo."
+  default     = true
+}
+
+variable "vault_transform_tokenization" {
+  type        = bool
+  description = "Whether to configure the Transform secret engine tokenization demo."
+  default     = true
+}
 
 variable "ssh_import_id" {
   type        = string
@@ -231,6 +249,12 @@ variable "namespaces" {
   default     = "bu0,bu1,bu2,bu3,bu4,bu5"
 }
 
+variable "namespace_count" {
+  type        = number
+  description = "Number of namespaces to create."
+  default     = 10
+}
+
 variable "ldap_user_count" {
   type        = number
   description = "Number of LDAP users to create."
@@ -248,3 +272,4 @@ variable "stop_after_starting_vault" {
   description = "Whether to stop bootstrap after starting vault."
   default     = false
 }
+
