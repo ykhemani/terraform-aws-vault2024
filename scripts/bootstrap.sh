@@ -882,7 +882,7 @@ vault write $IMPORTED_CA_NAME/config/urls \
   crl_distribution_points="$VAULT_ADDR/v1/$IMPORTED_CA_NAME/crl"
 
 _info "Import PEM bundle into imported ca"
-vault write -format=json $IMPORTED_CA_NAME/config/ca pem_bundle=@$CERT_DIR/wildcard/bundle.pem
+vault write -format=json $IMPORTED_CA_NAME/config/ca pem_bundle=@$CERT_DIR/vault/bundle.pem
 
 _info "Create role for issuing certs in imported ca"
 vault write $IMPORTED_CA_NAME/roles/$VAULT_CERT_DOMAIN \
