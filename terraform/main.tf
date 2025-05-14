@@ -108,7 +108,6 @@ resource "tls_locally_signed_cert" "wildcard_cert" {
 
   allowed_uses = [
     "digital_signature",
-    "key_encipherment",
     "server_auth",
     "client_auth",
 
@@ -118,6 +117,55 @@ resource "tls_locally_signed_cert" "wildcard_cert" {
 
   ]
 }
+
+# vault private key
+resource "tls_private_key" "vault_private_key" {
+  algorithm = "RSA"
+  rsa_bits  = 4096
+}
+
+# vault csr
+resource "tls_cert_request" "vault_csr" {
+  private_key_pem = tls_private_key.vault_private_key.private_key_pem
+
+  subject {
+    common_name         = "vault.${var.domain}"
+    country             = var.cert_country
+    province            = var.cert_state
+    locality            = var.cert_locale
+    organization        = var.cert_org
+    organizational_unit = var.cert_ou
+  }
+
+  dns_names = [
+    "vault.${var.domain}",
+  ]
+
+  ip_addresses = ["127.0.0.1", aws_eip.eip.public_ip]
+}
+
+# vault cert
+resource "tls_locally_signed_cert" "vault_cert" {
+  cert_request_pem   = tls_cert_request.vault_csr.cert_request_pem
+  ca_private_key_pem = tls_private_key.ca-private-key.private_key_pem
+  ca_cert_pem        = tls_self_signed_cert.ca-cert.cert_pem
+
+  is_ca_certificate = true
+
+  validity_period_hours = var.cert_validity
+
+  allowed_uses = [
+    "digital_signature",
+    "server_auth",
+    "client_auth",
+
+    "cert_signing",
+    "crl_signing",
+    "ocsp_signing"
+
+  ]
+}
+
 
 # VPC
 data "aws_availability_zones" "available" {
@@ -229,6 +277,8 @@ resource "aws_secretsmanager_secret_version" "bootstrap-secrets" {
       ca_cert               = tls_self_signed_cert.ca-cert.cert_pem,
       wildcard_private_key  = tls_private_key.wildcard_private_key.private_key_pem,
       wildcard_cert         = tls_locally_signed_cert.wildcard_cert.cert_pem,
+      vault_private_key     = tls_private_key.vault_private_key.private_key_pem,
+      vault_cert            = tls_locally_signed_cert.vault_cert.cert_pem,
       ssh_import_id         = var.ssh_import_id,
       gitrepo               = var.gitrepo,
       repodir               = var.repodir,

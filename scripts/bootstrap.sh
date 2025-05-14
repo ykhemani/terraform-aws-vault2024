@@ -38,6 +38,8 @@ REPODIR=$(echo $SECRETS | jq -r .repodir)
 CERT_DIR=$(echo $SECRETS  | jq -r .cert_dir)
 WILDCARD_PRIVATE_KEY=$(echo $SECRETS  | jq -r .wildcard_private_key)
 WILDCARD_CERT=$(echo $SECRETS  | jq -r .wildcard_cert)
+VAULT_PRIVATE_KEY=$(echo $SECRETS  | jq -r .vault_private_key)
+VAULT_CERT=$(echo $SECRETS  | jq -r .vault_cert)
 CA_CERT=$(echo $SECRETS  | jq -r .ca_cert)
 
 DOMAIN=$(echo $SECRETS  | jq -r .domain)
@@ -211,6 +213,28 @@ $WILDCARD_CERT
 EOF
 fi
 
+mkdir -p $CERT_DIR/vault
+
+if [ "$VAULT_PRIVATE_KEY" == "" ]
+then
+  _error "VAULT_PRIVATE_KEY is not set"
+else
+  _info "Writing VAULT_PRIVATE_KEY to $CERT_DIR/vault/privkey.pem"
+  cat <<EOF > $CERT_DIR/vault/privkey.pem
+$VAULT_PRIVATE_KEY
+EOF
+fi
+
+if [ "$VAULT_CERT" == "" ]
+then
+  _error "VAULT_CERT is not set"
+else
+  _info "Writing VAULT_CERT to $CERT_DIR/vault/cert.pem"
+  cat <<EOF > $CERT_DIR/vault/cert.pem
+$VAULT_CERT
+EOF
+fi
+
 if [ "$CA_CERT" == "" ]
 then
   _error "CA_CERT is not set"
@@ -220,22 +244,45 @@ else
 $CA_CERT
 EOF
 
-  _info "Copying $CERT_DIR/wildcard/ca.pem to /usr/local/share/ca-certificates/demo-ca.pem"
-  cp $CERT_DIR/wildcard/ca.pem /usr/local/share/ca-certificates/demo-ca.pem
+  _info "Writing CA_CERT to $CERT_DIR/vault/ca.pem"
+  cat <<EOF > $CERT_DIR/vault/ca.pem
+$CA_CERT
+EOF
+
+  _info "Copying $CERT_DIR/wildcard/ca.pem to /usr/local/share/ca-certificates/wildcard-ca.pem"
+  cp $CERT_DIR/wildcard/ca.pem /usr/local/share/ca-certificates/wildcard-ca.pem
+
+  _info "Copying $CERT_DIR/vault/ca.pem to /usr/local/share/ca-certificates/vault-ca.pem"
+  cp $CERT_DIR/vault/ca.pem /usr/local/share/ca-certificates/vault-ca.pem
+
 fi
 
 _info "Writing wildcard private key and cert to $CERT_DIR/wildcard/privkey_cert.pem"
 cat $CERT_DIR/wildcard/privkey.pem > $CERT_DIR/wildcard/privkey_cert.pem
 cat $CERT_DIR/wildcard/cert.pem >> $CERT_DIR/wildcard/privkey_cert.pem
 
-_info "Writing cert and ca cert (fullchain) to $CERT_DIR/wildcard/fullchain.pem"
+_info "Writing wildcard cert and ca cert (fullchain) to $CERT_DIR/wildcard/fullchain.pem"
 cat $CERT_DIR/wildcard/cert.pem >> $CERT_DIR/wildcard/fullchain.pem
 cat $CERT_DIR/wildcard/ca.pem >> $CERT_DIR/wildcard/fullchain.pem
 
-_info "Writing private key, cert and ca cert (bundle) to $CERT_DIR/wildcard/bundle.pem"
+_info "Writing wildcard private key, cert and ca cert (bundle) to $CERT_DIR/wildcard/bundle.pem"
 cat $CERT_DIR/wildcard/privkey.pem > $CERT_DIR/wildcard/bundle.pem
 cat $CERT_DIR/wildcard/cert.pem >> $CERT_DIR/wildcard/bundle.pem
 cat $CERT_DIR/wildcard/ca.pem >> $CERT_DIR/wildcard/bundle.pem
+
+_info "Writing vault private key and cert to $CERT_DIR/vault/privkey_cert.pem"
+cat $CERT_DIR/vault/privkey.pem > $CERT_DIR/vault/privkey_cert.pem
+cat $CERT_DIR/vault/cert.pem >> $CERT_DIR/vault/privkey_cert.pem
+
+_info "Writing vault cert and ca cert (fullchain) to $CERT_DIR/vault/fullchain.pem"
+cat $CERT_DIR/vault/cert.pem >> $CERT_DIR/vault/fullchain.pem
+cat $CERT_DIR/vault/ca.pem >> $CERT_DIR/vault/fullchain.pem
+
+_info "Writing vault private key, cert and ca cert (bundle) to $CERT_DIR/vault/bundle.pem"
+cat $CERT_DIR/vault/privkey.pem > $CERT_DIR/vault/bundle.pem
+cat $CERT_DIR/vault/cert.pem >> $CERT_DIR/vault/bundle.pem
+cat $CERT_DIR/vault/ca.pem >> $CERT_DIR/vault/bundle.pem
+
 
 _info "Running update-ca-certificates"
 update-ca-certificates
@@ -276,16 +323,16 @@ storage "raft" {
 
   retry_join {
     leader_api_addr     = "https://vault.$DOMAIN:8200"
-    leader_ca_cert_file = "/run/secrets/wildcard_ca_cert"
-    tls_cert_file       = "/run/secrets/wildcard_cert"
-    tls_key_file        = "/run/secrets/wildcard_privkey"
+    leader_ca_cert_file = "/run/secrets/vault_ca_cert"
+    tls_cert_file       = "/run/secrets/vault_cert"
+    tls_key_file        = "/run/secrets/vault_privkey"
   }
 }
 
 listener "tcp" {
   address       = "0.0.0.0:8200"
-  tls_cert_file = "/run/secrets/wildcard_fullchain"
-  tls_key_file  = "/run/secrets/wildcard_privkey"
+  tls_cert_file = "/run/secrets/vault_fullchain"
+  tls_key_file  = "/run/secrets/vault_privkey"
 }
 
 api_addr     = "https://vault.$DOMAIN:8200"
@@ -314,7 +361,7 @@ export VAULT_TOKEN=\$(cat ~/venv/vault-init.json | jq -r .root_token)
 export DOMAIN=$DOMAIN
 
 export CERT_DIR=$CERT_DIR
-export CA_CERT=$CERT_DIR/wildcard/ca.pem
+export CA_CERT=$CERT_DIR/vault/ca.pem
 
 # ldap auth
 export LDAP_AUTH_PATH=ldap
@@ -440,10 +487,10 @@ services:
       - VAULT_LICENSE_PATH=/run/secrets/vault_license
     command: vault server -config=/vault/conf/vault.hcl
     secrets:
-      - wildcard_privkey
-      - wildcard_cert
-      - wildcard_ca_cert
-      - wildcard_fullchain
+      - vault_privkey
+      - vault_cert
+      - vault_ca_cert
+      - vault_fullchain
       - vault_license
 
   mysql:
@@ -589,6 +636,19 @@ secrets:
     file: /data/certs/wildcard/privkey_cert.pem
   wildcard_bundle:
     file: /data/certs/wildcard/bundle.pem
+  # vault certs
+  vault_privkey:
+    file: /data/certs/vault/privkey.pem
+  vault_cert:
+    file: /data/certs/vault/fullchain.pem
+  vault_ca_cert:
+    file: /data/certs/vault/ca.pem
+  vault_fullchain:
+    file: /data/certs/vault/fullchain.pem
+  vault_key_and_cert:
+    file: /data/certs/vault/privkey_cert.pem
+  vault_bundle:
+    file: /data/certs/vault/bundle.pem
 
   # licensing
   vault_license:
